@@ -1,0 +1,15 @@
+Show: {{ series }}.{% if hint %} Hint: {{ hint }}{% endif %}
+
+Below is an automatic transcript of the scene's English audio. Every word is numbered: [number] word.
+
+{{ transcript }}
+
+Find the words that were recognized incorrectly:
+- first and last names of characters, names of places, organizations and terms from this show
+  (for example, "Ermin Trout" instead of "Ehrmantraut", "Gomes" instead of "Gomez");
+- obvious mishearings that make a phrase lose its meaning.
+
+For each such word give its number i and the corrected spelling w with the same punctuation.
+One word may be replaced with 2–3 words if recognition glued them together. Don't change colloquial
+forms, slang or the characters' grammar, don't add missing words, don't touch anything you're unsure about.
+If there is nothing to fix, return an empty fixes list.

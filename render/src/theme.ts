@@ -1,3 +1,4 @@
+import { createContext, useContext } from "react";
 import { loadFont } from "@remotion/google-fonts/Inter";
 import type { Category } from "./generated/scene";
 
@@ -22,18 +23,60 @@ export const colors = {
   zero: "#4a4e57",
 } as const;
 
-type CategoryMeta = { label: string; cardLabel: string; color: string; icon: IconKind };
+type CategoryMeta = { color: string; icon: IconKind };
 export type IconKind = "brilliant" | "best" | "excellent" | "good" | "inaccuracy" | "mistake" | "blunder";
 
 export const categories: Record<Category, CategoryMeta> = {
-  brilliant: { label: "Блестящий", cardLabel: "Блестящий ход", color: "#26c2a3", icon: "brilliant" },
-  best: { label: "Лучший", cardLabel: "Лучший ход", color: "#81b64c", icon: "best" },
-  excellent: { label: "Отличный", cardLabel: "Отличный ход", color: "#5fa83f", icon: "excellent" },
-  good: { label: "Хороший", cardLabel: "Хороший ход", color: "#95b776", icon: "good" },
-  inaccuracy: { label: "Неточность", cardLabel: "Неточность", color: "#f7c631", icon: "inaccuracy" },
-  mistake: { label: "Ошибка", cardLabel: "Ошибка", color: "#ffa459", icon: "mistake" },
-  blunder: { label: "Зевок", cardLabel: "Зевок", color: "#fa412d", icon: "blunder" },
+  brilliant: { color: "#26c2a3", icon: "brilliant" },
+  best: { color: "#81b64c", icon: "best" },
+  excellent: { color: "#5fa83f", icon: "excellent" },
+  good: { color: "#95b776", icon: "good" },
+  inaccuracy: { color: "#f7c631", icon: "inaccuracy" },
+  mistake: { color: "#ffa459", icon: "mistake" },
+  blunder: { color: "#fa412d", icon: "blunder" },
 };
+
+// Надписи ролика на языке сцены (meta.language).
+export type Lang = "ru" | "en";
+type Labels = { label: string; card: string };
+export const TEXT = {
+  ru: {
+    categories: {
+      brilliant: { label: "Блестящий", card: "Блестящий ход" },
+      best: { label: "Лучший", card: "Лучший ход" },
+      excellent: { label: "Отличный", card: "Отличный ход" },
+      good: { label: "Хороший", card: "Хороший ход" },
+      inaccuracy: { label: "Неточность", card: "Неточность" },
+      mistake: { label: "Ошибка", card: "Ошибка" },
+      blunder: { label: "Зевок", card: "Зевок" },
+    } as Record<Category, Labels>,
+    side: { white: "белые", black: "чёрные" },
+    move: "Ход",
+    toMove: (who: string) => `ходит ${who}`,
+    summary: "Итоги партии",
+    accuracy: "Точность",
+    kicker: "Разбор сцены",
+  },
+  en: {
+    categories: {
+      brilliant: { label: "Brilliant", card: "Brilliant move" },
+      best: { label: "Best", card: "Best move" },
+      excellent: { label: "Excellent", card: "Excellent move" },
+      good: { label: "Good", card: "Good move" },
+      inaccuracy: { label: "Inaccuracy", card: "Inaccuracy" },
+      mistake: { label: "Mistake", card: "Mistake" },
+      blunder: { label: "Blunder", card: "Blunder" },
+    } as Record<Category, Labels>,
+    side: { white: "White", black: "Black" },
+    move: "Move",
+    toMove: (who: string) => `${who} to move`,
+    summary: "Game summary",
+    accuracy: "Accuracy",
+    kicker: "Scene breakdown",
+  },
+};
+export const LangContext = createContext<Lang>("ru");
+export const useText = () => TEXT[useContext(LangContext)];
 
 export const CATEGORY_ORDER: Category[] = [
   "brilliant",
@@ -45,4 +88,3 @@ export const CATEGORY_ORDER: Category[] = [
   "blunder",
 ];
 
-export const sideLabel = { white: "белые", black: "чёрные" } as const;

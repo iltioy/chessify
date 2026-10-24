@@ -28,7 +28,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         store.scene_path(job_id).write_text(REFERENCE.read_text(encoding="utf-8"), encoding="utf-8")
         store.update(job_id, status="review", step="проверьте ходы")
 
-    def fake_render(scene: Scene, out: Path, preset: str, length: str, log, progress) -> Path:
+    def fake_render(scene: Scene, out: Path, preset: str, length: str, log, progress, **_) -> Path:
         progress(0.5)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_bytes(b"fake mp4")
@@ -135,14 +135,15 @@ def test_episode_choose_and_music(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
         (self.data / "scene.json").write_text(scene.model_dump_json(), encoding="utf-8")
         return scene
 
-    def fake_render(scene, out, preset, length, log, progress):
+    def fake_render(scene, out, preset, length, log, progress, **_):
         seen["music"] = (scene.meta.music, scene.meta.music_volume)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_bytes(b"mp4")
         return out
 
-    monkeypatch.setattr(pipeline.Job, "__init__", lambda self, job_id, log=print: (
-        setattr(self, "id", job_id), setattr(self, "data", store.path(job_id)), setattr(self, "log", log)) and None)
+    monkeypatch.setattr(pipeline.Job, "__init__", lambda self, job_id, log=print, **_: (
+        setattr(self, "id", job_id), setattr(self, "data", store.path(job_id)), setattr(self, "log", log),
+        setattr(self, "ui", "ru")) and None)
     monkeypatch.setattr(pipeline.Job, "find_scenes", fake_find)
     monkeypatch.setattr(pipeline.Job, "process", fake_process)
     monkeypatch.setattr(pipeline, "render_scene", fake_render)
@@ -287,3 +288,24 @@ def test_rescore_recomputes_eval_from_categories(client) -> None:
     assert r.status_code == 200
     assert max(abs(m["eval_after"]) for m in r.json()["moves"]) < 2
     assert c.post("/api/scene/rescore", json={"moves": []}).status_code == 422
+
+
+def test_english_ui_messages_and_settings(client) -> None:
+    c, _ = client
+    en = {"X-Lang": "en"}
+    assert c.get("/api/jobs/nope", headers=en).json()["detail"] == "job not found"
+    assert c.get("/api/jobs/nope").json()["detail"] == "задача не найдена"  # без заголовка — по-русски
+    cfg = c.get("/api/config", headers=en).json()
+    assert cfg["lengths"]["full"] == "Whole scene" and cfg["profiles"]["custom"]["label"] == "Custom server"
+    sections = {s["id"]: s for s in c.get("/api/settings", headers=en).json()["sections"]}
+    assert sections["hf"]["title"] == "Speaker diarization" and sections["custom"]["fields"][0]["label"] == "API address"
+
+
+def test_job_remembers_video_and_ui_language(client) -> None:
+    c, _ = client
+    r = c.post("/api/jobs", files={"video": ("scene.mp4", b"x", "video/mp4")},
+               data={"series": "Breaking Bad", "language": "en"}, headers={"X-Lang": "en"})
+    params = r.json()["params"]
+    assert params["language"] == "en" and params["ui_lang"] == "en"
+    r = c.post("/api/jobs", files={"video": ("scene.mp4", b"x", "video/mp4")}, data={"series": "Во все тяжкие"})
+    assert r.json()["params"]["language"] == "ru"  # по умолчанию — язык интерфейса

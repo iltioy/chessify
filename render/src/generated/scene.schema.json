@@ -30,6 +30,16 @@
           "title": "Kicker",
           "type": "string"
         },
+        "language": {
+          "default": "ru",
+          "description": "Язык ролика: речь, тексты модели и надписи",
+          "enum": [
+            "ru",
+            "en"
+          ],
+          "title": "Language",
+          "type": "string"
+        },
         "watermark": {
           "anyOf": [
             {

@@ -1,7 +1,7 @@
 import React from "react";
 import { Img, staticFile } from "remotion";
 import type { Player } from "../generated/scene";
-import { colors, sideLabel } from "../theme";
+import { colors, useText } from "../theme";
 
 const Avatar: React.FC<{ player: Player; ring: string | null }> = ({ player, ring }) => (
   <div
@@ -29,7 +29,7 @@ const Avatar: React.FC<{ player: Player; ring: string | null }> = ({ player, rin
 const Names: React.FC<{ player: Player; side: "white" | "black" }> = ({ player, side }) => (
   <div style={{ textAlign: side === "white" ? "left" : "right" }}>
     <div style={{ color: colors.text, fontSize: 21, fontWeight: 700, lineHeight: "26px" }}>{player.name}</div>
-    <div style={{ color: colors.muted, fontSize: 15, lineHeight: "20px" }}>{sideLabel[side]}</div>
+    <div style={{ color: colors.muted, fontSize: 15, lineHeight: "20px" }}>{useText().side[side]}</div>
   </div>
 );
 

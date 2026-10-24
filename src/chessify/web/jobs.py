@@ -18,6 +18,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from chessify.i18n import Lang, pick
 from chessify.paths import JOBS_DIR, ROOT
 from chessify.schema import Scene
 
@@ -39,6 +40,8 @@ class JobParams(BaseModel):
     review: bool = Field(default=True, description="Остановиться после анализа, чтобы поправить ходы")
     music: str | None = Field(default=None, description="Трек из библиотеки музыки")
     music_volume: float = Field(default=0.12, ge=0, le=1)
+    language: Lang = Field(default="ru", description="Язык ролика: речь, тексты модели и надписи")
+    ui_lang: Lang = Field(default="ru", description="Язык интерфейса, на котором создана задача: журнал и сообщения")
 
 
 class JobState(BaseModel):
@@ -144,7 +147,8 @@ class Worker:
         self.thread.start()
 
     def submit(self, kind: Literal["process", "render"], job_id: str) -> None:
-        self.store.update(job_id, status="queued", step="в очереди", error=None, progress=None)
+        ui = self.store.get(job_id).params.ui_lang
+        self.store.update(job_id, status="queued", step=pick("в очереди", "queued", ui), error=None, progress=None)
         self.queue.put((kind, job_id))
 
     def _loop(self) -> None:
@@ -170,36 +174,45 @@ class Worker:
         from chessify.config import load_config
         from chessify.pipeline import Job
 
-        state = self.store.update(job_id, status="processing", step="подготовка")
-        p = state.params
+        state = self.store.get(job_id)
+        p, ui = state.params, state.params.ui_lang
+        self.store.update(job_id, status="processing", step=pick("подготовка", "preparing", ui))
         cfg = load_config()
         roles = cfg.profile(p.profile)
         if missing := [k for k in cfg.missing_keys(roles) if k != "HF_TOKEN"]:
-            raise RuntimeError(f"Профилю «{cfg.resolve(p.profile)}» не хватает ключей: {settings.describe(missing)}. "
-                               "Впишите их в «Настройках» или выберите другую в поле «Модель для разбора».")
-        job = Job(job_id, log=self._log(job_id))
+            name, keys = cfg.resolve(p.profile), settings.describe(missing, ui)
+            raise RuntimeError(pick(
+                f"Профилю «{name}» не хватает ключей: {keys}. "
+                "Впишите их в «Настройках» или выберите другую в поле «Модель для разбора».",
+                f"Profile “{name}” is missing keys: {keys}. "
+                "Add them in Settings or pick another one in “Model for the analysis”.", ui))
+        job = Job(job_id, log=self._log(job_id), ui_lang=ui, language=p.language)
         source = self.store.path(job_id) / state.source
         if p.mode == "episode" and p.start is None and p.end is None:
             candidates = job.find_scenes(source, cfg, roles, p.series, p.hint)
             if not candidates:
-                raise RuntimeError("в серии не нашлось подходящих сцен-дуэлей; задайте начало и конец вручную")
+                raise RuntimeError(pick("в серии не нашлось подходящих сцен-дуэлей; задайте начало и конец вручную",
+                                        "no duel scenes found in the episode; set the start and end manually", ui))
             if p.review:
-                self.store.update(job_id, status="choose", step="выберите сцену", progress=None)
+                self.store.update(job_id, status="choose", step=pick("выберите сцену", "choose a scene", ui), progress=None)
                 return
-            p = p.model_copy(update={"start": candidates[0].start, "end": candidates[0].end})
+            best = candidates[0]
+            p = p.model_copy(update={"start": best.start, "end": best.end})
             self.store.update(job_id, params=p)
-            self._log(job_id)(f"   взята сцена «{candidates[0].title}» ({candidates[0].start:.0f}–{candidates[0].end:.0f} с)")
+            job.say(f"   взята сцена «{best.title}» ({best.start:.0f}–{best.end:.0f} с)",
+                    f"   took the scene “{best.title}” ({best.start:.0f}–{best.end:.0f} s)")
         job.process(source, cfg, roles, p.series, p.hint, p.start, p.end, p.speakers)
         if p.review:
-            self.store.update(job_id, status="review", step="проверьте ходы и запустите рендер", progress=None)
+            self.store.update(job_id, status="review", progress=None,
+                              step=pick("проверьте ходы и запустите рендер", "check the moves and start rendering", ui))
         else:
             self._render(job_id)
 
     def _render(self, job_id: str) -> None:
         from chessify.pipeline import add_music, render_scene
 
-        state = self.store.update(job_id, status="rendering", step="5/5 рендер", progress=0.0)
-        p = state.params
+        p = self.store.get(job_id).params
+        self.store.update(job_id, status="rendering", step=pick("5/5 рендер", "5/5 rendering", p.ui_lang), progress=0.0)
         name = f"{job_id}_{p.length}_{p.preset}.mp4"
         last = [0.0]
 
@@ -209,9 +222,9 @@ class Worker:
                 self.store.update(job_id, progress=round(x, 3))
 
         scene = add_music(self.store.load_scene(job_id), p.music, p.music_volume)
-        render_scene(scene, OUT_DIR / name, p.preset, p.length, log=self._log(job_id), progress=progress)
+        render_scene(scene, OUT_DIR / name, p.preset, p.length, log=self._log(job_id), progress=progress, ui_lang=p.ui_lang)
         outputs = [o for o in self.store.get(job_id).outputs if o != name] + [name]
-        self.store.update(job_id, status="done", step="готово", progress=None, outputs=outputs)
+        self.store.update(job_id, status="done", step=pick("готово", "done", p.ui_lang), progress=None, outputs=outputs)
 
 
 def wait_idle(worker: Worker, timeout: float = 30) -> None:

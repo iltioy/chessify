@@ -14,6 +14,10 @@ export type Title = string;
  * Надзаголовок перед названием сериала
  */
 export type Kicker = string;
+/**
+ * Язык ролика: речь, тексты модели и надписи
+ */
+export type Language = "ru" | "en";
 export type Watermark = string | null;
 /**
  * Видео сцены относительно папки ассетов
@@ -119,6 +123,7 @@ export interface Meta {
   series: Series;
   title: Title;
   kicker?: Kicker;
+  language?: Language;
   watermark?: Watermark;
   clip: Clip;
   background?: Background;

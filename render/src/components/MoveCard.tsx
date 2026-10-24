@@ -1,7 +1,7 @@
 import React from "react";
 import { Easing, interpolate, useVideoConfig } from "remotion";
 import type { Move } from "../generated/scene";
-import { categories, colors, sideLabel } from "../theme";
+import { categories, colors, useText } from "../theme";
 import { timing } from "../timeline";
 import { CategoryIcon } from "./CategoryIcon";
 
@@ -13,6 +13,7 @@ export const MoveCard: React.FC<{ move: Move; label: string; who: string; local:
 }) => {
   const { fps } = useVideoConfig();
   const meta = categories[move.category];
+  const text = useText();
   const t = local / fps;
   const typed = Math.max(0, Math.floor((t - timing.typeDelay) * timing.charsPerSecond));
   const typing = typed < move.comment.length;
@@ -43,9 +44,9 @@ export const MoveCard: React.FC<{ move: Move; label: string; who: string; local:
         <CategoryIcon category={move.category} size={62} />
         <div>
           <div style={{ color: colors.muted, fontSize: 13, fontWeight: 500, letterSpacing: 0.8, textTransform: "uppercase" }}>
-            {label} · {who} · {sideLabel[move.side]}
+            {label} · {who} · {text.side[move.side]}
           </div>
-          <div style={{ color: meta.color, fontSize: 29, fontWeight: 800, lineHeight: "36px" }}>{meta.cardLabel}</div>
+          <div style={{ color: meta.color, fontSize: 29, fontWeight: 800, lineHeight: "36px" }}>{text.categories[move.category].card}</div>
         </div>
       </div>
       <div

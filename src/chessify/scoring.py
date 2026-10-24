@@ -47,7 +47,7 @@ MATE_MAX = 3
 MATE_TAIL_SHARE = 0.25  # мат ставится ходами из последней четверти партии
 STRONG = {Category.brilliant, Category.best, Category.excellent}
 COUNTER = {Category.brilliant, Category.best}
-NO_MATE_VERDICT = re.compile(r"НЕТ|НИЧ|ПАТ", re.IGNORECASE)
+NO_MATE_VERDICT = re.compile(r"НЕТ|НИЧ|ПАТ|\bNO\b|DRAW|STALEMATE", re.IGNORECASE)
 
 
 def accuracy(moves: list[Move], side: Side) -> float:

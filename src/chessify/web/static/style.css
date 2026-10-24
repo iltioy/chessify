@@ -22,7 +22,7 @@ h2 { font-size: 17px; margin: 0 0 14px; }
 .hint { font-weight: 400; }
 .kicker { text-transform: uppercase; letter-spacing: 2.5px; font-size: 12px; color: var(--muted); font-weight: 600; }
 
-.top { display: flex; align-items: center; justify-content: space-between; padding: 18px 28px; border-bottom: 1px solid var(--line); }
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 28px; border-bottom: 1px solid var(--line); }
 .brand { display: flex; gap: 14px; align-items: center; }
 .brand .name { font-weight: 800; font-size: 19px; }
 .logo { display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 50%;
@@ -204,3 +204,7 @@ dialog.settings::backdrop { background: rgba(0, 0, 0, 0.6); }
   .settings-panes { padding: 14px 16px; }
   .settings-actions span { display: none; }
 }
+.top-actions { display: flex; gap: 10px; align-items: center; }
+.lang-switch { display: flex; background: var(--panel-2); border-radius: 9px; padding: 3px; gap: 2px; }
+.lang-switch button { background: none; color: var(--muted); padding: 5px 9px; border-radius: 7px; font-size: 13px; }
+.lang-switch button.active { background: var(--panel); color: var(--text); }

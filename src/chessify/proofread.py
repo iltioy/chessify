@@ -10,12 +10,13 @@ import re
 
 from pydantic import BaseModel
 
-from chessify.analysis import PROMPTS, format_transcript
+from chessify.analysis import format_transcript, template
 from chessify.llm import LLMRouter
 from chessify.schema import Word
 
 MIN_SIMILARITY = 0.5  # «Гусфринк» → «Гус Фринг» проходит, «Фишетленда» → «Впечатлён, да» — нет
-SYSTEM = "Ты корректор субтитров к сериалам. Отвечаешь только JSON."
+SYSTEM = {"ru": "Ты корректор субтитров к сериалам. Отвечаешь только JSON.",
+          "en": "You proofread subtitles for TV shows. You answer with JSON only."}
 
 
 class Fix(BaseModel):
@@ -47,7 +48,8 @@ def apply_fixes(words: list[Word], fixes: list[Fix]) -> tuple[list[Word], list[t
     return out, applied
 
 
-def proofread(router: LLMRouter, words: list[Word], series: str, hint: str = "") -> tuple[list[Word], list[tuple[str, str]]]:
-    user = PROMPTS.get_template("proofread.md.j2").render(series=series, hint=hint, transcript=format_transcript(words))
-    result = router.complete_json("segment", SYSTEM, user, ProofreadResult)
+def proofread(router: LLMRouter, words: list[Word], series: str, hint: str = "",
+              lang: str = "ru") -> tuple[list[Word], list[tuple[str, str]]]:
+    user = template("proofread.md.j2", lang).render(series=series, hint=hint, transcript=format_transcript(words, lang))
+    result = router.complete_json("segment", SYSTEM[lang], user, ProofreadResult)
     return apply_fixes(words, result.fixes)

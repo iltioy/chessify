@@ -10,7 +10,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from chessify.analysis import PROMPTS
+from chessify.analysis import template
 from chessify.llm import LLMRouter
 from chessify.schema import Word
 
@@ -153,15 +153,15 @@ def merge_adjacent(cands: list[SceneCandidate], max_seconds: float, lines: list[
 
 def find_scenes(router: LLMRouter, words: list[Word], series: str, hint: str = "", video: Path | None = None,
                 duration: float | None = None, max_candidates: int = 3, min_seconds: int = 45,
-                max_seconds: int = 600) -> list[SceneCandidate]:
+                max_seconds: int = 600, lang: str = "ru") -> list[SceneCandidate]:
     lines = to_lines(words)
     if not lines:
         return []
     parts = windows(lines)
-    system = PROMPTS.get_template("system.md.j2").render(examples=[])
+    system = template("system.md.j2", lang).render(examples=[])
     found: list[SceneCandidate] = []
     for k, (a, b) in enumerate(parts, 1):
-        prompt = PROMPTS.get_template("scene_select.md.j2").render(
+        prompt = template("scene_select.md.j2", lang).render(
             series=series, hint=hint, part=k, part_total=len(parts), transcript=_format(lines[a:b], a),
             max_candidates=max_candidates, min_seconds=min_seconds, max_seconds=max_seconds)
         result = router.complete_json("scene_select", system, prompt, CandidateList)

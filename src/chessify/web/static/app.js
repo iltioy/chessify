@@ -1,18 +1,16 @@
 "use strict";
 
+// Подписи — в i18n.js: t("cat.<категория>"), t("status.<статус>").
 const CATEGORIES = {
-  brilliant: { label: "Блестящий", color: "#26c2a3" },
-  best: { label: "Лучший", color: "#81b64c" },
-  excellent: { label: "Отличный", color: "#5fa83f" },
-  good: { label: "Хороший", color: "#95b776" },
-  inaccuracy: { label: "Неточность", color: "#f7c631" },
-  mistake: { label: "Ошибка", color: "#ffa459" },
-  blunder: { label: "Зевок", color: "#fa412d" },
+  brilliant: { color: "#26c2a3" },
+  best: { color: "#81b64c" },
+  excellent: { color: "#5fa83f" },
+  good: { color: "#95b776" },
+  inaccuracy: { color: "#f7c631" },
+  mistake: { color: "#ffa459" },
+  blunder: { color: "#fa412d" },
 };
-const STATUS = {
-  queued: "в очереди", processing: "анализ", choose: "выбор сцены", review: "проверка ходов",
-  rendering: "рендер", done: "готово", error: "ошибка",
-};
+const status = (s) => t(`status.${s}`);
 const ACTIVE = new Set(["queued", "processing", "rendering"]);
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -34,13 +32,9 @@ let music = []; // библиотека треков
 let candidatesLoadedFor = null;
 
 const fmtTime = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
-const MODE_HINTS = {
-  clip: "Готовый фрагмент со сценой-дуэлью.",
-  episode: "Серия целиком: модель найдёт сцены-дуэли, вы выберете одну. Знаете границы — укажите начало и конец.",
-};
-
 async function api(path, options = {}) {
-  const res = await fetch(path, options);
+  // Сервер отвечает на языке интерфейса: ошибки, тексты настроек, журнал новых задач.
+  const res = await fetch(path, { ...options, headers: { ...(options.headers || {}), "X-Lang": LANG } });
   if (!res.ok) {
     let msg = res.statusText;
     try {
@@ -65,22 +59,24 @@ async function loadConfig() {
   fillSelect(form.length, config.lengths, form.length.value || "full");
   fillSelect(form.preset, config.presets, form.preset.value || "final");
   const profiles = Object.fromEntries(Object.entries(config.profiles).map(([name, p]) =>
-    [name, `${p.label}${p.missing_keys.some((k) => k !== "HF_TOKEN") ? " — не настроено" : ""}`]));
+    [name, `${p.label}${p.missing_keys.some((k) => k !== "HF_TOKEN") ? t("not_configured") : ""}`]));
   fillSelect(form.profile, profiles, config.default_profile);
   showProfileWarning();
 }
 
 function setupForm() {
   const form = $("#new-job");
+  // Язык ролика (речь, тексты модели, надписи) по умолчанию — как язык интерфейса.
+  fillSelect(form.language, { ru: t("lang.ru"), en: t("lang.en") }, LANG);
   form.profile.addEventListener("change", showProfileWarning);
   form.querySelectorAll('input[name="mode"]').forEach((r) => r.addEventListener("change", () => {
-    $("#mode-hint").textContent = MODE_HINTS[form.mode.value];
+    $("#mode-hint").textContent = t(`mode.hint.${form.mode.value}`);
   }));
 }
 
 async function loadMusic() {
   music = await api("/api/music");
-  const options = { "": "Без музыки", ...Object.fromEntries(music.map((m) => [m, m])) };
+  const options = { "": t("music.none"), ...Object.fromEntries(music.map((m) => [m, m])) };
   [$("#new-job").music, f("music")].filter(Boolean).forEach((sel) => fillSelect(sel, options, sel.value));
 }
 
@@ -93,7 +89,7 @@ async function uploadMusic(ev) {
     const { name } = await api("/api/music", { method: "POST", body: data });
     await loadMusic();
     $("#new-job").music.value = name;
-  } catch (e) { alert(`Не удалось загрузить трек: ${e.message}`); }
+  } catch (e) { alert(t("err.music", { e: e.message })); }
   ev.target.value = "";
 }
 
@@ -105,10 +101,10 @@ function showProfileWarning() {
   const llm = profile.missing_labels.filter((_, i) => missing[i] !== "HF_TOKEN");
   const parts = [];
   if (llm.length) {
-    parts.push(`${profile.label}: не хватает ключей (${llm.join("; ")}) — анализ не запустится.`);
+    parts.push(t("warn.keys", { label: profile.label, keys: llm.join("; ") }));
   }
-  if (missing.includes("HF_TOKEN")) parts.push("Нет HF_TOKEN: разметка спикеров пропустится, стороны модель определит по смыслу.");
-  const open = el("button", { type: "button", textContent: "Открыть настройки" });
+  if (missing.includes("HF_TOKEN")) parts.push(t("warn.hf"));
+  const open = el("button", { type: "button", textContent: t("open_settings") });
   open.addEventListener("click", () => openSettings(llm.length ? form.profile.value : "hf"));
   warn.replaceChildren(parts.join(" ") + " ", open);
   warn.hidden = parts.length === 0;
@@ -120,8 +116,7 @@ function setupDrop() {
   const text = drop.querySelector(".file-text");
   const show = () => {
     const n = input.files.length;
-    text.textContent = n === 0 ? "Перетащите видео сюда или выберите файлы"
-      : n === 1 ? input.files[0].name : `${n} файлов — будет ${n} задач с одинаковыми настройками`;
+    text.textContent = n === 0 ? t("drop") : n === 1 ? input.files[0].name : t("drop.many", { n });
   };
   input.addEventListener("change", show);
   ["dragenter", "dragover"].forEach((e) => drop.addEventListener(e, (ev) => { ev.preventDefault(); drop.classList.add("drag"); }));
@@ -143,11 +138,11 @@ async function submitJob(ev) {
     for (const [i, file] of files.entries()) {
       const data = new FormData();
       data.append("video", file);
-      for (const name of ["series", "hint", "start", "end", "speakers", "profile", "length", "preset", "music", "music_volume", "mode"]) {
+      for (const name of ["series", "hint", "start", "end", "speakers", "profile", "length", "preset", "music", "music_volume", "mode", "language"]) {
         if (form[name].value !== "") data.append(name, form[name].value);
       }
       data.append("review", form.review.checked ? "true" : "false");
-      const prefix = files.length > 1 ? `Файл ${i + 1} из ${files.length}. ` : "";
+      const prefix = files.length > 1 ? t("upload.file", { i: i + 1, n: files.length }) : "";
       lastId = (await uploadOne(data, prefix)).id;
       refreshJobs();
     }
@@ -155,7 +150,7 @@ async function submitJob(ev) {
     form.video.dispatchEvent(new Event("change"));
     if (lastId) openJob(lastId);
   } catch (e) {
-    alert(`Не удалось создать задачу: ${e.message}`);
+    alert(t("err.create", { e: e.message }));
   } finally {
     button.disabled = false;
     $("#upload").hidden = true;
@@ -174,7 +169,7 @@ function uploadOne(data, prefix) {
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) {
         bar.style.width = `${(e.loaded / e.total) * 100}%`;
-        label.textContent = `${prefix}Загрузка: ${Math.round((e.loaded / e.total) * 100)}%`;
+        label.textContent = t("upload.progress", { prefix, p: Math.round((e.loaded / e.total) * 100) });
       }
     };
     xhr.onload = () => {
@@ -183,8 +178,9 @@ function uploadOne(data, prefix) {
       try { msg = JSON.parse(xhr.responseText).detail; } catch { /* не JSON */ }
       reject(new Error(typeof msg === "string" ? msg : JSON.stringify(msg)));
     };
-    xhr.onerror = () => reject(new Error("сеть недоступна"));
+    xhr.onerror = () => reject(new Error(t("err.network")));
     xhr.open("POST", "/api/jobs");
+    xhr.setRequestHeader("X-Lang", LANG);
     xhr.send(data);
   });
 }
@@ -200,7 +196,7 @@ async function refreshJobs() {
       el("div", {},
         el("div", { className: "title", textContent: j.params.series }),
         el("div", { className: "sub", textContent: j.created.replace("T", " ") })),
-      el("span", { className: `badge ${j.status}`, textContent: STATUS[j.status] }));
+      el("span", { className: `badge ${j.status}`, textContent: status(j.status) }));
     li.addEventListener("click", () => openJob(j.id));
     return li;
   }));
@@ -209,7 +205,7 @@ async function refreshJobs() {
 // ---------- карточка задачи ----------
 
 async function openJob(id) {
-  if (dirty && id !== currentId && !confirm("Правки ходов не сохранены. Уйти?")) return;
+  if (dirty && id !== currentId && !confirm(t("confirm.leave"))) return;
   currentId = id;
   currentStatus = null;
   scene = null;
@@ -217,6 +213,7 @@ async function openJob(id) {
   candidatesLoadedFor = null;
   const detail = $("#detail");
   detail.replaceChildren($("#detail-tpl").content.cloneNode(true));
+  applyI18n(detail);
   bindDetail(detail);
   await refreshJobs();
   await poll();
@@ -224,11 +221,11 @@ async function openJob(id) {
 
 function bindDetail(root) {
   root.querySelector('[data-a="delete"]').addEventListener("click", async () => {
-    if (!confirm("Удалить задачу вместе с роликами?")) return;
+    if (!confirm(t("confirm.delete"))) return;
     await api(`/api/jobs/${currentId}`, { method: "DELETE" }).catch((e) => alert(e.message));
     currentId = null;
     dirty = false;
-    $("#detail").replaceChildren(el("div", { className: "placeholder", textContent: "Задача удалена" }));
+    $("#detail").replaceChildren(el("div", { className: "placeholder", textContent: t("deleted") }));
     refreshJobs();
   });
   root.querySelector('[data-a="retry"]').addEventListener("click", async () => {
@@ -238,7 +235,7 @@ function bindDetail(root) {
   root.querySelector('[data-a="custom"]').addEventListener("click", () => {
     const start = Number(f("custom-start").value);
     const end = Number(f("custom-end").value);
-    if (!(end > start)) return alert("Конец должен быть позже начала");
+    if (!(end > start)) return alert(t("err.range"));
     chooseScene({ start, end });
   });
   root.querySelector('[data-a="save"]').addEventListener("click", () => saveScene().catch((e) => alert(e.message)));
@@ -288,7 +285,7 @@ function renderJob(job) {
   f("source").textContent = job.params.hint || "";
   const badge = f("badge");
   badge.className = `badge ${job.status}`;
-  badge.textContent = STATUS[job.status];
+  badge.textContent = status(job.status);
   f("step").textContent = job.step;
 
   const bar = f("progress");
@@ -307,7 +304,7 @@ function renderJob(job) {
     const latest = job.outputs[job.outputs.length - 1];
     const src = `/api/jobs/${job.id}/video/${encodeURIComponent(latest)}`;
     if (!f("player").src.endsWith(src)) f("player").src = src;
-    f("outputs").replaceChildren(el("div", { className: "muted", textContent: "Скачать:" }),
+    f("outputs").replaceChildren(el("div", { className: "muted", textContent: t("download") }),
       ...job.outputs.slice().reverse().map((name) =>
         el("a", { href: `/api/jobs/${job.id}/video/${encodeURIComponent(name)}`, download: name, textContent: name })));
   }
@@ -321,7 +318,7 @@ function renderJob(job) {
   if (config && !f("length").options.length) {
     fillSelect(f("length"), config.lengths, job.params.length);
     fillSelect(f("preset"), config.presets, job.params.preset);
-    fillSelect(f("music"), { "": "Без музыки", ...Object.fromEntries(music.map((m) => [m, m])) }, job.params.music || "");
+    fillSelect(f("music"), { "": t("music.none"), ...Object.fromEntries(music.map((m) => [m, m])) }, job.params.music || "");
     f("music-volume").value = job.params.music_volume;
   }
 }
@@ -334,15 +331,15 @@ async function loadCandidates(job) {
   player.src = `/api/jobs/${job.id}/source`;
   const cands = await api(`/api/jobs/${job.id}/candidates`);
   f("candidates").replaceChildren(...cands.map((c, i) => {
-    const watch = el("button", { className: "ghost", textContent: "Смотреть" });
+    const watch = el("button", { className: "ghost", textContent: t("watch") });
     watch.addEventListener("click", () => { player.currentTime = c.start; player.play().catch(() => {}); });
-    const take = el("button", { className: "primary", textContent: "Взять эту сцену" });
+    const take = el("button", { className: "primary", textContent: t("take") });
     take.addEventListener("click", () => chooseScene({ index: i }));
     return el("div", { className: "candidate" },
       el("div", { className: "head" },
         el("span", { className: "title", textContent: `${i + 1}. ${c.title}` }),
         el("span", { className: "score", textContent: `${c.score}/10` })),
-      el("div", { className: "muted", textContent: `${fmtTime(c.start)}–${fmtTime(c.end)} · ${Math.round(c.end - c.start)} с · ${c.sides}` }),
+      el("div", { className: "muted", textContent: `${fmtTime(c.start)}–${fmtTime(c.end)} · ${Math.round(c.end - c.start)} ${t("seconds")} · ${c.sides}` }),
       el("div", { textContent: c.why }),
       el("div", { className: "excerpt", textContent: `«${c.excerpt}»` }),
       el("div", { className: "buttons" }, watch, take));
@@ -387,9 +384,9 @@ function renderMoves() {
   const names = { white: scene.players.white.name, black: scene.players.black.name };
   f("moves").replaceChildren(...scene.moves.map((m, i) => {
     const category = el("select", { dataset: { m: "category" } });
-    fillSelect(category, Object.fromEntries(Object.entries(CATEGORIES).map(([k, v]) => [k, v.label])), m.category);
+    fillSelect(category, Object.fromEntries(Object.keys(CATEGORIES).map((k) => [k, t(`cat.${k}`)])), m.category);
     const title = el("input", { value: m.title, maxLength: 40, dataset: { m: "title" } });
-    const evalInput = el("input", { type: "number", step: "0.1", min: "-5", max: "5", value: m.eval_after, title: "Шкала после хода", dataset: { m: "eval_after" } });
+    const evalInput = el("input", { type: "number", step: "0.1", min: "-5", max: "5", value: m.eval_after, title: t("eval.tip"), dataset: { m: "eval_after" } });
     const comment = el("textarea", { value: m.comment, rows: 2, maxLength: 220, dataset: { m: "comment" } });
     const show = el("input", { type: "checkbox", checked: m.show_card !== false, dataset: { m: "show_card" } });
 
@@ -400,8 +397,8 @@ function renderMoves() {
       el("div", {},
         el("div", { className: "quote", textContent: `«${m.quote}»` }),
         el("div", { className: "fields" }, category, title, evalInput, comment),
-        el("div", { className: "flags" }, el("label", {}, show, "Показывать карточку"),
-          m.mate_in != null ? el("span", { className: "mate", textContent: m.mate_in === 0 ? "Шкала: # (мат)" : `Шкала: M${m.mate_in}` }) : "")));
+        el("div", { className: "flags" }, el("label", {}, show, t("show_card")),
+          m.mate_in != null ? el("span", { className: "mate", textContent: m.mate_in === 0 ? t("mate.now") : t("mate.in", { n: m.mate_in }) }) : "")));
     card.style.setProperty("--c", CATEGORIES[m.category].color);
 
     const update = (ev) => {
@@ -426,19 +423,19 @@ function renderStats() {
   const parts = ["white", "black"].map((side) => {
     const own = scene.moves.filter((m) => m.side === side);
     const acc = own.length ? own.reduce((s, m) => s + weights[m.category], 0) / own.length : 0;
-    return `${scene.players[side].name}: точность ${acc.toFixed(1)}`;
+    return t("stats.accuracy", { name: scene.players[side].name, acc: acc.toFixed(1) });
   });
   const lastMove = scene.moves[scene.moves.length - 1];
   const last = lastMove ? lastMove.eval_after : 0;
-  const end = lastMove?.mate_in != null ? (lastMove.mate_in === 0 ? "# (мат)" : `M${lastMove.mate_in}`)
+  const end = lastMove?.mate_in != null ? (lastMove.mate_in === 0 ? t("mate.short") : `M${lastMove.mate_in}`)
     : `${last > 0 ? "+" : ""}${Number(last).toFixed(1)}`;
   f("stats").replaceChildren(...parts.map((t) => el("span", { textContent: t })),
-    el("span", { textContent: `шкала в конце ${end}` }));
+    el("span", { textContent: t("stats.end", { end }) }));
 }
 
 function markDirty() {
   dirty = true;
-  f("saved").textContent = "Есть несохранённые правки";
+  f("saved").textContent = t("unsaved");
 }
 
 function collectScene() {
@@ -473,7 +470,7 @@ async function saveScene() {
     body: JSON.stringify(scene),
   });
   dirty = false;
-  f("saved").textContent = "Сохранено";
+  f("saved").textContent = t("saved");
 }
 
 // ---------- настройки: ключи и подключения ----------
@@ -484,10 +481,9 @@ let settings = null; // ответ /api/settings
 let activeSection = null;
 let pendingDefault = null; // «Сделать основной» до сохранения
 const cleared = new Set(); // ключи, которые удалятся при сохранении
-const SOURCE = { web: "задан здесь", env: "задан в .env", none: "не задан" };
+
 const DEFAULT_KEY = "CHESSIFY_DEFAULT_PROFILE";
-const NAV_GROUPS = { llm: "Модель для разбора", speech: "Распознавание речи" };
-const SAVED_HINT = "Ключи хранятся на сервере и действуют сразу. В браузер они не возвращаются.";
+const NAV_GROUPS = ["llm", "speech"];
 
 function setupSettings() {
   const dialog = $("#settings");
@@ -495,19 +491,19 @@ function setupSettings() {
   dialog.querySelectorAll("[data-close]").forEach((b) => b.addEventListener("click", () => dialog.close()));
   $("#settings-form").addEventListener("submit", async (ev) => {
     ev.preventDefault();
-    if (await saveSettings()) $("#settings-saved").textContent = "Сохранено";
+    if (await saveSettings()) $("#settings-saved").textContent = t("saved");
   });
 }
 
 async function openSettings(sectionId) {
   try {
     settings = await api("/api/settings");
-  } catch (e) { alert(`Не удалось открыть настройки: ${e.message}`); return; }
+  } catch (e) { alert(t("err.settings", { e: e.message })); return; }
   cleared.clear();
   pendingDefault = null;
   activeSection = sectionId || activeSection || settings.default_profile;
   $("#settings-error").hidden = true;
-  $("#settings-saved").textContent = SAVED_HINT;
+  $("#settings-saved").textContent = t("settings.hint");
   renderSettings();
   $("#settings").showModal();
 }
@@ -517,14 +513,14 @@ const currentDefault = () => pendingDefault || settings.default_profile;
 function renderSettings() {
   const nav = $("#settings-nav");
   nav.replaceChildren();
-  for (const [kind, title] of Object.entries(NAV_GROUPS)) {
-    nav.append(el("div", { className: "nav-group", textContent: title }));
+  for (const kind of NAV_GROUPS) {
+    nav.append(el("div", { className: "nav-group", textContent: t(`nav.${kind}`) }));
     for (const sec of settings.sections.filter((x) => x.kind === kind)) {
       const state = sec.ready === true ? "ready" : sec.ready === false ? "missing" : "unknown";
       const item = el("button", { type: "button", className: `nav-item ${sec.id === activeSection ? "active" : ""}` },
-        el("span", { className: `dot ${state}`, title: { ready: "настроено", missing: "не настроено", unknown: "вход из терминала" }[state] }),
+        el("span", { className: `dot ${state}`, title: t(`dot.${state}`) }),
         el("span", { className: "nav-title", textContent: sec.title }),
-        sec.id === currentDefault() ? el("span", { className: "tag web", textContent: "основная" }) : "");
+        sec.id === currentDefault() ? el("span", { className: "tag web", textContent: t("main") }) : "");
       item.addEventListener("click", () => { activeSection = sec.id; showSection(); });
       nav.append(item);
     }
@@ -544,25 +540,25 @@ function sectionPane(sec) {
   const pane = el("section", { className: "pane", dataset: { id: sec.id } },
     el("h3", { textContent: sec.title }),
     el("p", { className: "muted small", textContent: sec.about }));
-  if (sec.link) pane.append(el("a", { href: sec.link, target: "_blank", rel: "noopener", textContent: "Получить ключ ↗" }));
+  if (sec.link) pane.append(el("a", { href: sec.link, target: "_blank", rel: "noopener", textContent: t("get_key") }));
   pane.append(...sec.fields.map(settingField));
 
   const actions = el("div", { className: "pane-actions" });
   const out = el("pre", { className: "check-out", hidden: true });
   const chips = el("div", { className: "chips", hidden: true });
   if (sec.check) {
-    const check = el("button", { type: "button", className: "ghost", textContent: sec.fields.length ? "Сохранить и проверить" : "Проверить" });
+    const check = el("button", { type: "button", className: "ghost", textContent: sec.fields.length ? t("check.save") : t("check") });
     check.addEventListener("click", () => runCheck(sec, check));
     actions.append(check);
   }
   if (sec.kind === "llm") {
     if (sec.id === currentDefault()) {
-      actions.append(el("span", { className: "tag web", textContent: "Основная модель: ей разбираются новые ролики" }));
+      actions.append(el("span", { className: "tag web", textContent: t("main.long") }));
     } else {
-      const makeDefault = el("button", { type: "button", className: "ghost", textContent: "Сделать основной" });
+      const makeDefault = el("button", { type: "button", className: "ghost", textContent: t("make_main") });
       makeDefault.addEventListener("click", async () => {
         pendingDefault = sec.id;
-        if (await saveSettings()) $("#settings-saved").textContent = `Основная модель — ${sec.title}`;
+        if (await saveSettings()) $("#settings-saved").textContent = t("main.saved", { title: sec.title });
       });
       actions.append(makeDefault);
     }
@@ -574,18 +570,18 @@ function sectionPane(sec) {
 function settingField(fd) {
   const input = fd.kind === "secret"
     ? el("input", { name: fd.key, type: "password", autocomplete: "new-password",
-      placeholder: fd.masked ? `${fd.masked} — оставьте пустым, чтобы не менять` : "не задан" })
+      placeholder: fd.masked ? t("secret.keep", { masked: fd.masked }) : t("source.none") })
     : el("input", { name: fd.key, type: "text", value: fd.value || "", placeholder: fd.placeholder, autocomplete: "off" });
   const source = fd.source || "none";
-  const tag = el("span", { className: `tag ${source}`, textContent: SOURCE[source] });
+  const tag = el("span", { className: `tag ${source}`, textContent: t(`source.${source}`) });
   const head = el("span", { className: "field-head" }, fd.label, el("code", { className: "var", textContent: fd.key }), tag);
   if (fd.source === "web") {
-    const remove = el("button", { type: "button", className: "link-like", textContent: "удалить" });
+    const remove = el("button", { type: "button", className: "link-like", textContent: t("remove") });
     remove.addEventListener("click", () => {
       cleared.add(fd.key);
       input.value = "";
       tag.className = "tag cleared";
-      tag.textContent = "удалится при сохранении";
+      tag.textContent = t("remove.pending");
     });
     head.append(remove);
   }
@@ -604,7 +600,7 @@ async function runCheck(sec, button) {
     const chips = pane.querySelector(".chips");
     out.hidden = false;
     out.className = "check-out";
-    out.textContent = "Проверяю…";
+    out.textContent = t("checking");
     try {
       const res = await api("/api/settings/check", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target: sec.check }),
@@ -614,7 +610,7 @@ async function runCheck(sec, button) {
       // Модели на своём сервере — щелчком в поле «Модель»: имя обычно неизвестно заранее.
       const models = sec.id === "custom" ? res.models || [] : [];
       chips.hidden = models.length === 0;
-      chips.replaceChildren(el("span", { className: "muted small", textContent: "Взять модель:" }), ...models.map((m) => {
+      chips.replaceChildren(el("span", { className: "muted small", textContent: t("take_model") }), ...models.map((m) => {
         const chip = el("button", { type: "button", className: "ghost", textContent: m });
         chip.addEventListener("click", () => { $("#settings-form").elements.CUSTOM_LLM_MODEL.value = m; });
         return chip;
@@ -660,12 +656,18 @@ async function saveSettings() {
 
 // ---------- старт ----------
 
+applyI18n();
+document.querySelectorAll("[data-lang]").forEach((b) => {
+  b.classList.toggle("active", b.dataset.lang === LANG);
+  b.addEventListener("click", () => { if (b.dataset.lang !== LANG) setLang(b.dataset.lang); });
+});
+
 window.addEventListener("beforeunload", (e) => { if (dirty) e.preventDefault(); });
 $("#new-job").addEventListener("submit", submitJob);
 $("#music-upload").addEventListener("change", uploadMusic);
 setupDrop();
 setupForm();
 setupSettings();
-Promise.all([loadConfig(), loadMusic()]).catch((e) => alert(`Не удалось загрузить настройки: ${e.message}`));
+Promise.all([loadConfig(), loadMusic()]).catch((e) => alert(t("err.config", { e: e.message })));
 refreshJobs();
 setInterval(refreshJobs, 5000);

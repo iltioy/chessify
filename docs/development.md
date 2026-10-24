@@ -1,77 +1,85 @@
-# Chessify — для разработчиков
+# Chessify — for developers
 
-Техническая сторона: как устроен конвейер, профили моделей, командная строка и запуск без Docker.
-Инструкция для пользователя — в [README](../README.md).
+The technical side: how the pipeline works, model profiles, the command line and running without Docker.
+The user guide is in the [README](../README.md). [Русская версия](development.ru.md).
 
-## Как это устроено
+## How it works
 
 ```
-видео → нормализация (ffmpeg) → распознавание речи (faster-whisper large-v3, GPU)
-      → разметка спикеров (pyannote, GPU) → вычитка расшифровки (LLM: имена, ослышки)
-      → разбор партии (LLM, 3 прохода: ходы → оценки → редактура)
-      → шкала, точность, темп карточек (код) → аватары (OpenCV) → рендер (Remotion) → ролик 1080×1920
+video → normalization (ffmpeg) → speech recognition (faster-whisper large-v3, GPU)
+      → speaker diarization (pyannote, GPU) → transcript proofreading (LLM: names, mishearings)
+      → game analysis (LLM, 3 passes: moves → ratings → editing)
+      → eval bar, accuracy, card pacing (code) → avatars (OpenCV) → rendering (Remotion) → 1080×1920 video
 ```
 
-- `src/chessify/` — конвейер, CLI (`chessify`) и веб-сервер (`chessify web`, FastAPI + статическая страница).
-- `render/` — шаблон ролика на Remotion.
-- `config/providers.yaml` — профили: какие модели выполняют какие роли. Провайдеры сменяемые.
-- `prompts/` — промпты разбора.
-- Шкала, точность, счётчики категорий и темп карточек считаются кодом из ходов, а не моделью.
+- `src/chessify/` — the pipeline, the CLI (`chessify`) and the web server (`chessify web`, FastAPI + a static page).
+- `render/` — the Remotion video template.
+- `config/providers.yaml` — profiles: which models play which roles. Providers are swappable.
+- `prompts/` — Russian prompts, `prompts/en/` — English prompts and translated few-shot examples.
+- The eval bar, accuracy, category counts and card pacing are computed by code from the moves, not by the model.
 
-## Профили моделей
+## Languages
 
-Профиль — модель, которая разбирает партию. Выбирается в форме нового ролика, основная — в «Настройках».
-После правки `config/providers.yaml` достаточно `docker compose restart`.
+- **Interface language** (RU / EN switch in the header) is stored in the browser and sent to the server in the
+  `X-Lang` header: API errors, settings texts and the log of new jobs follow it (`src/chessify/i18n.py`,
+  `src/chessify/web/static/i18n.js`).
+- **Video language** is chosen per job: speech recognition, the prompts and the on-screen text of the video
+  (`Meta.language` in the scene, labels in `render/src/theme.ts`).
 
-| Профиль | Модель | Что нужно |
+## Model profiles
+
+A profile is the model that analyzes the game. It is chosen in the new video form; the main one is set in Settings.
+After editing `config/providers.yaml`, `docker compose restart` is enough.
+
+| Profile | Model | What's needed |
 |---|---|---|
-| `custom` | свой OpenAI-совместимый сервер (vLLM, SGLang, Ollama, LM Studio…) | адрес, ключ и модель |
-| `deepseek` | разметка — DeepSeek Flash, оценки и редактура — DeepSeek V4 Pro | ключ DeepSeek |
-| `gemini` | Google Gemini 3.8 Flash, бесплатный тариф | ключ Gemini |
-| `openai` | OpenAI, по умолчанию `gpt-6.1-sol` | ключ OpenAI |
-| `openrouter` | любая модель OpenRouter, по умолчанию `deepseek/deepseek-v4-pro` | ключ OpenRouter |
-| `anthropic` | Claude по API, по умолчанию `claude-opus-5-5` | ключ Anthropic |
-| `claude` | Claude по подписке через Claude Code | вход: `docker compose exec app claude` → `/login` |
+| `custom` | your own OpenAI-compatible server (vLLM, SGLang, Ollama, LM Studio…) | address, key and model |
+| `deepseek` | moves — DeepSeek Flash, ratings and editing — DeepSeek V4 Pro | DeepSeek key |
+| `gemini` | Google Gemini 3.8 Flash, free tier | Gemini key |
+| `openai` | OpenAI, `gpt-6.1-sol` by default | OpenAI key |
+| `openrouter` | any OpenRouter model, `deepseek/deepseek-v4-pro` by default | OpenRouter key |
+| `anthropic` | Claude via the API, `claude-opus-5-5` by default | Anthropic key |
+| `claude` | Claude via a subscription through Claude Code | sign in: `docker compose exec app claude` → `/login` |
 
-Ключи хранятся в `data/settings/settings.env` (пишет веб-интерфейс) или в `.env` (шаблон — `.env.example`);
-заданное в интерфейсе важнее. Проверка подключения из терминала:
+Keys are stored in `data/settings/settings.env` (written by the web interface) or in `.env` (template: `.env.example`);
+what is set in the interface wins. Checking a connection from a terminal:
 
 ```powershell
-docker compose exec app uv run chessify llm-check --provider <профиль>
+docker compose exec app uv run chessify llm-check --provider <profile>
 ```
 
 ## Docker
 
-- `compose.yaml` — с видеокартой NVIDIA, `compose.cpu.yaml` — без неё:
+- `compose.yaml` — with an NVIDIA graphics card, `compose.cpu.yaml` — without one:
   `docker compose -f compose.yaml -f compose.cpu.yaml up -d --build`.
-- Порт на хосте — `CHESSIFY_PORT` в `.env` (по умолчанию 37415), внутри контейнера — 8000.
-- Код (`src`, `prompts`, `render/src`, `render/public/sfx`) подключён с диска: после правки кода хватает
-  `docker compose restart`. Пересборка (`--build`) нужна при изменении зависимостей или `Dockerfile`.
-- Данные — в `data/`: `out` — ролики, `jobs` — задачи, `media` — клипы и аватары, `music` — музыка,
-  `settings` — ключи из «Настроек». Модели распознавания кэшируются в томе `cache`.
+- The host port is `CHESSIFY_PORT` in `.env` (37415 by default); inside the container it is 8000.
+- The code (`src`, `prompts`, `render/src`, `render/public/sfx`) is mounted from disk: after a code change,
+  `docker compose restart` is enough. A rebuild (`--build`) is needed when dependencies or the `Dockerfile` change.
+- Data lives in `data/`: `out` — videos, `jobs` — jobs, `media` — clips and avatars, `music` — music,
+  `settings` — keys from Settings. Speech recognition models are cached in the `cache` volume.
 
 ```powershell
-docker compose logs -f                                   # журнал сервера
-docker compose exec app uv run chessify doctor           # проверка GPU, CUDA, ffmpeg, Remotion
+docker compose logs -f                                   # server log
+docker compose exec app uv run chessify doctor           # check GPU, CUDA, ffmpeg, Remotion
 ```
 
-## Без Docker
+## Without Docker
 
-Установка Python, Node и ffmpeg — `scripts/setup.ps1`, затем:
-
-```
-uv run chessify web                      # веб-интерфейс на http://127.0.0.1:37415
-uv run chessify run сцена.mp4 --series "Во все тяжкие" --length shorts
-uv run chessify run серия.mkv --series "Во все тяжкие" --auto-scene --music theme.mp3
-uv run chessify find-scenes серия.mkv --series "Во все тяжкие"     # только показать кандидатов
-uv run chessify batch папка_с_видео/ --series "Во все тяжкие" --length shorts
-```
-
-## Тесты и проверки
+Install Python, Node and ffmpeg with `scripts/setup.ps1`, then:
 
 ```
-uv run --group dev --extra web pytest      # тесты, без сети и ключей
-uv run python scripts/stt_wer.py <words.json>…   # точность распознавания по эталону
+uv run chessify web                      # web interface at http://127.0.0.1:37415
+uv run chessify run scene.mp4 --series "Breaking Bad" --language en --length shorts
+uv run chessify run episode.mkv --series "Breaking Bad" --language en --auto-scene --music theme.mp3
+uv run chessify find-scenes episode.mkv --series "Breaking Bad" --language en   # only list candidates
+uv run chessify batch videos/ --series "Breaking Bad" --language en --length shorts
 ```
 
-После правки `src/chessify/schema.py`: `uv run chessify export-schema` и `npm run types` в `render/`.
+## Tests and checks
+
+```
+uv run --group dev --extra web pytest            # tests, no network or keys
+uv run python scripts/stt_wer.py <words.json>…   # speech recognition accuracy against the reference
+```
+
+After editing `src/chessify/schema.py`: `uv run chessify export-schema` and `npm run types` in `render/`.

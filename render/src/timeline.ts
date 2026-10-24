@@ -141,7 +141,7 @@ export const accuracy = (moves: Move[], side: Move["side"]) => {
   return Math.round((own.reduce((s, m) => s + weights[m.category], 0) / own.length) * 10) / 10;
 };
 
-export const moveLabel = (moves: Move[], index: number) => {
+export const moveLabel = (moves: Move[], index: number, word = "Ход") => {
   const m = moves[index];
-  return m.side === "white" ? `Ход ${m.n}.` : `Ход ${m.n}…`;
+  return m.side === "white" ? `${word} ${m.n}.` : `${word} ${m.n}…`;
 };

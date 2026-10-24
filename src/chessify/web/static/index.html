@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Chessify — сцена как шахматная партия</title>
+  <title data-i18n="title">Chessify — сцена как шахматная партия</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -11,66 +11,74 @@
     <div class="brand">
       <span class="logo">♞</span>
       <div>
-        <div class="kicker">Разбор сцены</div>
-        <div class="name">Сцена как шахматная партия</div>
+        <div class="kicker" data-i18n="brand.kicker">Разбор сцены</div>
+        <div class="name" data-i18n="brand.name">Сцена как шахматная партия</div>
       </div>
     </div>
-    <button class="ghost" id="open-settings">⚙ Настройки</button>
+    <div class="top-actions">
+      <div class="lang-switch" role="group" aria-label="Language">
+        <button type="button" data-lang="ru">RU</button><button type="button" data-lang="en">EN</button>
+      </div>
+      <button class="ghost" id="open-settings" data-i18n="settings">⚙ Настройки</button>
+    </div>
   </header>
 
   <main class="layout">
     <aside class="side">
       <section class="panel">
-        <h2>Новый ролик</h2>
+        <h2 data-i18n="new.title">Новый ролик</h2>
         <form id="new-job">
           <div class="segmented" role="radiogroup">
-            <label><input type="radio" name="mode" value="clip" checked><span>Фрагмент</span></label>
-            <label><input type="radio" name="mode" value="episode"><span>Целая серия</span></label>
+            <label><input type="radio" name="mode" value="clip" checked><span data-i18n="mode.clip">Фрагмент</span></label>
+            <label><input type="radio" name="mode" value="episode"><span data-i18n="mode.episode">Целая серия</span></label>
           </div>
-          <p class="hint mode-hint" id="mode-hint">Готовый фрагмент со сценой-дуэлью.</p>
+          <p class="hint mode-hint" id="mode-hint" data-i18n="mode.hint.clip">Готовый фрагмент со сценой-дуэлью.</p>
           <label class="file" id="drop">
             <input type="file" name="video" accept="video/*" multiple required>
-            <span class="file-text">Перетащите видео сюда или выберите файлы</span>
+            <span class="file-text" data-i18n="drop">Перетащите видео сюда или выберите файлы</span>
           </label>
-          <label>Сериал
-            <input name="series" placeholder="Во все тяжкие" required>
+          <label><span data-i18n="series">Сериал</span>
+            <input name="series" placeholder="Во все тяжкие" data-i18n-ph="series.ph" required>
           </label>
-          <label>Подсказка модели <span class="hint">(необязательно)</span>
-            <input name="hint" placeholder="Допрос Майка агентами DEA">
+          <label><span><span data-i18n="hint">Подсказка модели</span> <span class="hint" data-i18n="optional">(необязательно)</span></span>
+            <input name="hint" placeholder="Допрос Майка агентами DEA" data-i18n-ph="hint.ph">
           </label>
           <div class="row" id="range-row">
-            <label>Начало, с<input name="start" type="number" step="0.1" min="0" placeholder="0"></label>
-            <label>Конец, с<input name="end" type="number" step="0.1" min="0" placeholder="до конца"></label>
-            <label>Говорящих<input name="speakers" type="number" min="2" max="8" placeholder="авто"></label>
+            <label><span data-i18n="start">Начало, с</span><input name="start" type="number" step="0.1" min="0" placeholder="0"></label>
+            <label><span data-i18n="end">Конец, с</span><input name="end" type="number" step="0.1" min="0" placeholder="до конца" data-i18n-ph="end.ph"></label>
+            <label><span data-i18n="speakers">Говорящих</span><input name="speakers" type="number" min="2" max="8" placeholder="авто" data-i18n-ph="speakers.ph"></label>
           </div>
           <div class="row">
-            <label>Длина<select name="length"></select></label>
-            <label>Качество<select name="preset"></select></label>
+            <label><span data-i18n="length">Длина</span><select name="length"></select></label>
+            <label><span data-i18n="quality">Качество</span><select name="preset"></select></label>
           </div>
-          <label>Модель для разбора<select name="profile"></select></label>
+          <div class="row">
+            <label class="grow"><span data-i18n="profile">Модель для разбора</span><select name="profile"></select></label>
+            <label><span data-i18n="language">Язык ролика</span><select name="language"></select></label>
+          </div>
           <div class="row music-row">
-            <label class="grow">Музыка<select name="music"></select></label>
-            <label>Громкость<input name="music_volume" type="range" min="0" max="0.4" step="0.01" value="0.12"></label>
+            <label class="grow"><span data-i18n="music">Музыка</span><select name="music"></select></label>
+            <label><span data-i18n="volume">Громкость</span><input name="music_volume" type="range" min="0" max="0.4" step="0.01" value="0.12"></label>
           </div>
-          <label class="link-like">+ добавить трек в библиотеку<input type="file" id="music-upload" accept="audio/*" hidden></label>
+          <label class="link-like"><span data-i18n="music.add">+ добавить трек в библиотеку</span><input type="file" id="music-upload" accept="audio/*" hidden></label>
           <div class="warn" id="profile-warn" hidden></div>
-          <label class="check"><input type="checkbox" name="review" checked> Проверить ходы перед рендером</label>
-          <button type="submit" class="primary">Запустить</button>
+          <label class="check"><input type="checkbox" name="review" checked> <span data-i18n="review">Проверить ходы перед рендером</span></label>
+          <button type="submit" class="primary" data-i18n="start.button">Запустить</button>
           <div class="upload" id="upload" hidden><div class="bar"><div></div></div><span></span></div>
         </form>
       </section>
 
       <section class="panel">
-        <h2>Задачи</h2>
+        <h2 data-i18n="jobs">Задачи</h2>
         <ul id="jobs" class="jobs"></ul>
-        <p class="empty" id="jobs-empty">Пока пусто</p>
+        <p class="empty" id="jobs-empty" data-i18n="jobs.empty">Пока пусто</p>
       </section>
     </aside>
 
     <section class="detail" id="detail">
       <div class="placeholder">
         <div class="logo big">♞</div>
-        <p>Загрузите фрагмент сериала — приложение разберёт диалог как шахматную партию
+        <p data-i18n="placeholder">Загрузите фрагмент сериала — приложение разберёт диалог как шахматную партию
           и соберёт вертикальный ролик.</p>
       </div>
     </section>
@@ -79,18 +87,18 @@
   <dialog id="settings" class="settings">
     <form id="settings-form">
       <div class="settings-head">
-        <h2>Настройки</h2>
-        <button type="button" class="ghost" data-close aria-label="Закрыть">✕</button>
+        <h2 data-i18n="settings.title">Настройки</h2>
+        <button type="button" class="ghost" data-close aria-label="Закрыть" data-i18n-aria="close">✕</button>
       </div>
       <div class="settings-body">
-        <nav class="settings-nav" id="settings-nav" aria-label="Разделы настроек"></nav>
+        <nav class="settings-nav" id="settings-nav" aria-label="Разделы настроек" data-i18n-aria="settings.sections"></nav>
         <div class="settings-panes" id="settings-panes"></div>
       </div>
       <div class="error" id="settings-error" hidden></div>
       <div class="settings-actions">
-        <span class="muted small" id="settings-saved">Ключи хранятся на сервере и действуют сразу. В браузер они не возвращаются.</span>
-        <button type="button" class="ghost" data-close>Закрыть</button>
-        <button type="submit" class="primary">Сохранить</button>
+        <span class="muted small" id="settings-saved" data-i18n="settings.hint">Ключи хранятся на сервере и действуют сразу. В браузер они не возвращаются.</span>
+        <button type="button" class="ghost" data-close data-i18n="close">Закрыть</button>
+        <button type="submit" class="primary" data-i18n="save">Сохранить</button>
       </div>
     </form>
   </dialog>
@@ -102,7 +110,7 @@
         <h1 data-f="series"></h1>
         <div class="muted" data-f="source"></div>
       </div>
-      <button class="ghost danger" data-a="delete">Удалить</button>
+      <button class="ghost danger" data-a="delete" data-i18n="delete">Удалить</button>
     </div>
 
     <div class="status">
@@ -111,16 +119,16 @@
     </div>
     <div class="progress" data-f="progress"><div></div></div>
     <div class="error" data-f="error" hidden></div>
-    <button class="ghost" data-a="retry" hidden>Повторить</button>
+    <button class="ghost" data-a="retry" hidden data-i18n="retry">Повторить</button>
 
     <div class="choose" data-f="choose" hidden>
-      <h2>Выберите сцену</h2>
+      <h2 data-i18n="choose.title">Выберите сцену</h2>
       <video controls playsinline preload="metadata" data-f="source-player"></video>
       <div class="candidates" data-f="candidates"></div>
       <div class="row custom-range">
-        <label>Своё начало, с<input type="number" step="0.1" min="0" data-f="custom-start"></label>
-        <label>Свой конец, с<input type="number" step="0.1" min="0" data-f="custom-end"></label>
-        <button class="ghost" data-a="custom">Взять этот отрезок</button>
+        <label><span data-i18n="custom.start">Своё начало, с</span><input type="number" step="0.1" min="0" data-f="custom-start"></label>
+        <label><span data-i18n="custom.end">Свой конец, с</span><input type="number" step="0.1" min="0" data-f="custom-end"></label>
+        <button class="ghost" data-a="custom" data-i18n="custom.take">Взять этот отрезок</button>
       </div>
     </div>
 
@@ -130,39 +138,40 @@
     </div>
 
     <div class="editor" data-f="editor" hidden>
-      <h2>Партия</h2>
-      <label>Заголовок ролика<textarea data-s="title" rows="2"></textarea></label>
+      <h2 data-i18n="editor.title">Партия</h2>
+      <label><span data-i18n="editor.video_title">Заголовок ролика</span><textarea data-s="title" rows="2"></textarea></label>
       <div class="players">
-        <div class="player"><img data-f="ava-white" alt=""><label>Белые<input data-s="white"></label></div>
-        <div class="player"><img data-f="ava-black" alt=""><label>Чёрные<input data-s="black"></label></div>
+        <div class="player"><img data-f="ava-white" alt=""><label><span data-i18n="white">Белые</span><input data-s="white"></label></div>
+        <div class="player"><img data-f="ava-black" alt=""><label><span data-i18n="black">Чёрные</span><input data-s="black"></label></div>
       </div>
       <div class="moves" data-f="moves"></div>
       <div class="row">
-        <label>Итог<input data-s="verdict"></label>
-        <label class="grow">Строка вывода<input data-s="line"></label>
+        <label><span data-i18n="verdict">Итог</span><input data-s="verdict"></label>
+        <label class="grow"><span data-i18n="line">Строка вывода</span><input data-s="line"></label>
       </div>
       <div class="stats-row">
         <div class="stats" data-f="stats"></div>
-        <button class="ghost" data-a="pace" title="Карточка у первого хода (крючок), дальше примерно раз в 12 секунд — у самого яркого хода; остальные ходы идут без остановки">Расставить карточки по темпу</button>
-        <button class="ghost" data-a="rescore" title="Шкала считается из категорий ходов; в концовке при явном фаворите — отсчёт до мата">Пересчитать шкалу по категориям</button>
+        <button class="ghost" data-a="pace" data-i18n="pace" data-i18n-title="pace.tip">Расставить карточки по темпу</button>
+        <button class="ghost" data-a="rescore" data-i18n="rescore" data-i18n-title="rescore.tip">Пересчитать шкалу по категориям</button>
       </div>
       <div class="actions">
-        <label>Длина<select data-f="length"></select></label>
-        <label>Качество<select data-f="preset"></select></label>
-        <label>Музыка<select data-f="music"></select></label>
-        <label>Громкость<input type="range" min="0" max="0.4" step="0.01" data-f="music-volume"></label>
-        <button class="ghost" data-a="save">Сохранить</button>
-        <button class="primary" data-a="render">Сохранить и собрать ролик</button>
+        <label><span data-i18n="length">Длина</span><select data-f="length"></select></label>
+        <label><span data-i18n="quality">Качество</span><select data-f="preset"></select></label>
+        <label><span data-i18n="music">Музыка</span><select data-f="music"></select></label>
+        <label><span data-i18n="volume">Громкость</span><input type="range" min="0" max="0.4" step="0.01" data-f="music-volume"></label>
+        <button class="ghost" data-a="save" data-i18n="save">Сохранить</button>
+        <button class="primary" data-a="render" data-i18n="render">Сохранить и собрать ролик</button>
       </div>
       <div class="saved muted" data-f="saved"></div>
     </div>
 
     <details class="log">
-      <summary>Журнал</summary>
+      <summary data-i18n="log">Журнал</summary>
       <pre data-f="log"></pre>
     </details>
   </template>
 
+  <script src="i18n.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -38,3 +38,22 @@ def test_clean_drops_overlaps_and_fake_pauses() -> None:
     moves = _clean_moves(seg, _words())
     assert [(m.w0, m.w1) for m in moves] == [(0, 2), (3, 3)]
 
+
+
+def test_prompts_render_in_both_languages() -> None:
+    from chessify.analysis import _examples, template
+
+    sample = {"series": "S", "hint": "h", "transcript": "[0] a", "white": "A", "black": "B", "eval_start": 0.5,
+              "moves": [{"index": 0, "side_name": "A", "quote": "q", "nonverbal": False}], "draft": "{}",
+              "part": 1, "part_total": 2, "max_candidates": 3, "min_seconds": 45, "max_seconds": 600}
+    for lang in ("ru", "en"):
+        examples = _examples(False, lang)
+        assert len(examples) == 12
+        assert template("system.md.j2", lang).render(examples=examples)
+        for name in ("segment", "grade", "edit", "proofread", "scene_select"):
+            text = template(f"{name}.md.j2", lang).render(**sample)
+            assert ("Show:" in text or "Below" in text) == (lang == "en"), name
+
+
+def test_transcript_pause_marker_follows_language() -> None:
+    assert "[pause 6.0 s after word 1]" in format_transcript(_words(), "en")

@@ -1,7 +1,7 @@
 import React from "react";
 import { Easing, Img, interpolate, staticFile, useVideoConfig } from "remotion";
 import type { Move, Players, Summary as SummaryData } from "../generated/scene";
-import { CATEGORY_ORDER, categories, colors } from "../theme";
+import { CATEGORY_ORDER, categories, colors, useText } from "../theme";
 import { accuracy } from "../timeline";
 import { CategoryIcon } from "./CategoryIcon";
 
@@ -21,6 +21,7 @@ export const Summary: React.FC<{ moves: Move[]; players: Players; summary: Summa
   local,
 }) => {
   const { fps } = useVideoConfig();
+  const text = useText();
   const appear = (delay: number) =>
     interpolate(local, [delay * fps, (delay + 0.3) * fps], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   const count = (side: "white" | "black", c: string) => moves.filter((m) => m.side === side && m.category === c).length;
@@ -44,7 +45,7 @@ export const Summary: React.FC<{ moves: Move[]; players: Players; summary: Summa
         }),
       }}
     >
-      <div style={{ textAlign: "center", color: colors.text, fontSize: 30, fontWeight: 800 }}>Итоги партии</div>
+      <div style={{ textAlign: "center", color: colors.text, fontSize: 30, fontWeight: 800 }}>{text.summary}</div>
 
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14, gap: 20 }}>
         {(["white", "black"] as const).map((side) => (
@@ -56,7 +57,7 @@ export const Summary: React.FC<{ moves: Move[]; players: Players; summary: Summa
       </div>
 
       <div style={{ display: "flex", alignItems: "center", marginTop: 6, opacity: appear(0.3) }}>
-        <div style={{ flex: 1, color: colors.text, fontSize: 21, fontWeight: 700 }}>Точность</div>
+        <div style={{ flex: 1, color: colors.text, fontSize: 21, fontWeight: 700 }}>{text.accuracy}</div>
         <div style={{ display: "flex", gap: 20 }}>
           {(["white", "black"] as const).map((side) => (
             <div
@@ -83,7 +84,7 @@ export const Summary: React.FC<{ moves: Move[]; players: Players; summary: Summa
       <div style={{ marginTop: 14 }}>
         {CATEGORY_ORDER.map((c, i) => (
           <div key={c} style={{ display: "flex", alignItems: "center", height: 44, opacity: appear(0.5 + i * 0.12) }}>
-            <div style={{ width: 190, color: colors.text, fontSize: 19, fontWeight: 500 }}>{categories[c].label}</div>
+            <div style={{ width: 190, color: colors.text, fontSize: 19, fontWeight: 500 }}>{text.categories[c].label}</div>
             <CategoryIcon category={c} size={30} />
             <div style={{ flex: 1 }} />
             <div style={{ display: "flex", gap: 20 }}>

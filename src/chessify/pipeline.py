@@ -21,6 +21,7 @@ from chessify.analysis import analyze, load_words
 from chessify.asr import ADAPTERS
 from chessify.config import Config
 from chessify.diarization import PyannoteDiarization, assign_speakers
+from chessify.i18n import Lang, norm, pick
 from chessify.llm import LLMRouter
 from chessify.paths import JOBS_DIR, MUSIC_DIR, MUSIC_EXT, RENDER_DIR
 from chessify.schema import Meta, Scene
@@ -58,14 +59,24 @@ def has_nvenc() -> bool:
     return probe.returncode == 0
 
 
+KICKER = {"ru": "Разбор сцены", "en": "Scene breakdown"}  # надзаголовок ролика
+
+
 class Job:
-    def __init__(self, job_id: str, log: Log = print) -> None:
+    """ui_lang — язык журнала, language — язык ролика: речь, тексты модели и надписи."""
+
+    def __init__(self, job_id: str, log: Log = print, ui_lang: str = "ru", language: str = "ru") -> None:
         self.id = job_id
+        self.ui: Lang = norm(ui_lang)
+        self.language: Lang = norm(language)
         self.data = JOBS_DIR / job_id
         self.media = RENDER_DIR / "public" / "jobs" / job_id
         self.data.mkdir(parents=True, exist_ok=True)
         self.media.mkdir(parents=True, exist_ok=True)
         self.log = log
+
+    def say(self, ru: str, en: str) -> None:
+        self.log(pick(ru, en, self.ui))
 
     def public(self, name: str) -> str:
         """Путь для шаблона Remotion (относительно render/public)."""
@@ -76,13 +87,13 @@ class Job:
         trim = (["-ss", str(start)] if start else []) + (["-to", str(end)] if end else [])
         encoder = ["-c:v", "h264_nvenc", "-cq", "20"] if has_nvenc() else ["-c:v", "libx264", "-crf", "18"]
         if not clip.exists():
-            self.log("1/5 нормализация клипа")
+            self.say("1/5 нормализация клипа", "1/5 normalizing the clip")
             ffmpeg(*trim, "-i", str(source), "-vf", "scale=-2:720,fps=30,setsar=1", *encoder,
                    "-c:a", "aac", "-b:a", "160k", str(clip))
         if not audio.exists():
             ffmpeg("-i", str(clip), "-vn", "-ac", "1", "-ar", "16000", str(audio))
         if not bg.exists():
-            self.log("1/5 размытый фон")
+            self.say("1/5 размытый фон", "1/5 blurred background")
             ffmpeg("-i", str(clip), "-vf", BLUR_BG, "-an", *encoder, str(bg))
 
     def transcribe(self, cfg: Config, roles: dict[str, str], prefix: str = "") -> None:
@@ -90,8 +101,9 @@ class Job:
         if out.exists():
             return
         a = cfg.asr[roles["asr"]]
-        self.log(f"2/5 распознавание речи ({a.model}, {a.device})")
-        words = ADAPTERS[a.adapter](a.model, a.device, a.compute_type).transcribe(self.data / f"{prefix}audio.wav", "ru")
+        self.say(f"2/5 распознавание речи ({a.model}, {a.device})", f"2/5 speech recognition ({a.model}, {a.device})")
+        words = ADAPTERS[a.adapter](a.model, a.device, a.compute_type).transcribe(self.data / f"{prefix}audio.wav",
+                                                                                   self.language)
         out.write_text(json.dumps([w.model_dump() for w in words], ensure_ascii=False, indent=1), encoding="utf-8")
 
     def diarize(self, cfg: Config, roles: dict[str, str], num_speakers: int | None, prefix: str = "") -> None:
@@ -101,13 +113,13 @@ class Job:
         words = load_words(self.data / f"{prefix}words.json")
         d = cfg.diarization[roles["diarization"]]
         try:
-            self.log("3/5 разметка спикеров")
+            self.say("3/5 разметка спикеров", "3/5 speaker diarization")
             turns = PyannoteDiarization(d.model, d.device, d.token_env).diarize(self.data / f"{prefix}audio.wav",
                                                                                  num_speakers)
             words = assign_speakers(words, turns)
         except (RuntimeError, ImportError) as e:
             # Без разметки конвейер не падает: стороны модель определит по смыслу реплик, но хуже.
-            self.log(f"   разметка спикеров пропущена: {e}")
+            self.say(f"   разметка спикеров пропущена: {e}", f"   speaker diarization skipped: {e}")
         out.write_text(json.dumps([w.model_dump() for w in words], ensure_ascii=False, indent=1), encoding="utf-8")
 
     def proofread(self, router: LLMRouter, series: str, hint: str) -> None:
@@ -118,25 +130,28 @@ class Job:
         if out.exists():
             return
         words = load_words(self.data / "words.spk.json")
-        self.log("3/5 вычитка расшифровки")
+        self.say("3/5 вычитка расшифровки", "3/5 proofreading the transcript")
         try:
-            words, applied = proofread(router, words, series, hint)
-            self.log(f"   исправлено слов: {len(applied)}" + "".join(f"\n   {a} → {b}" for a, b in applied[:30]))
+            words, applied = proofread(router, words, series, hint, self.language)
+            fixes = "".join(f"\n   {a} → {b}" for a, b in applied[:30])
+            self.say(f"   исправлено слов: {len(applied)}{fixes}", f"   words fixed: {len(applied)}{fixes}")
         except Exception as e:  # noqa: BLE001
-            self.log(f"   вычитка пропущена: {e}")
+            self.say(f"   вычитка пропущена: {e}", f"   proofreading skipped: {e}")
         out.write_text(json.dumps([w.model_dump() for w in words], ensure_ascii=False, indent=1), encoding="utf-8")
 
     def analyze(self, router: LLMRouter, series: str, hint: str) -> Scene:
         out = self.data / "scene.json"
         if out.exists():
             return Scene.model_validate_json(out.read_text(encoding="utf-8"))
-        self.log("4/5 анализ партии")
-        meta = Meta(series=series, title="", clip=self.public("clip.mp4"), background=self.public("bg.mp4"))
+        self.say("4/5 анализ партии", "4/5 analyzing the game")
+        meta = Meta(series=series, title="", clip=self.public("clip.mp4"), background=self.public("bg.mp4"),
+                    language=self.language, kicker=KICKER[self.language])
         fixed = self.data / "words.fixed.json"
         scene = analyze(router, load_words(fixed if fixed.exists() else self.data / "words.spk.json"), meta, hint=hint)
         out.write_text(scene.model_dump_json(indent=1) + "\n", encoding="utf-8")
         t = router.total
-        self.log(f"   {len(scene.moves)} ходов; токены {t.input_tokens}/{t.output_tokens}, ≈ ${t.cost_usd:.3f}")
+        self.say(f"   {len(scene.moves)} ходов; токены {t.input_tokens}/{t.output_tokens}, ≈ ${t.cost_usd:.3f}",
+                 f"   {len(scene.moves)} moves; tokens {t.input_tokens}/{t.output_tokens}, ≈ ${t.cost_usd:.3f}")
         return scene
 
     def avatars(self, scene: Scene) -> Scene:
@@ -144,7 +159,7 @@ class Job:
             return scene
         from chessify.faces import make_avatars
 
-        self.log("4/5 аватары сторон")
+        self.say("4/5 аватары сторон", "4/5 player avatars")
         found = make_avatars(self.media / "clip.mp4", scene.moves, self.media)
         players = scene.players.model_copy(update={
             side.value: getattr(scene.players, side.value).model_copy(update={"avatar": self.public(path.name)})
@@ -164,16 +179,16 @@ class Job:
             return [SceneCandidate.model_validate(c) for c in json.loads(out.read_text(encoding="utf-8"))]
         audio = self.data / "episode_audio.wav"
         if not audio.exists():
-            self.log("1/5 звук серии")
+            self.say("1/5 звук серии", "1/5 episode audio")
             ffmpeg("-i", str(source), "-vn", "-ac", "1", "-ar", "16000", str(audio))
         self.transcribe(cfg, roles, prefix="episode_")
         self.diarize(cfg, roles, None, prefix="episode_")
-        self.log("4/5 поиск сцен-дуэлей")
+        self.say("4/5 поиск сцен-дуэлей", "4/5 looking for duel scenes")
         candidates = find_scenes(LLMRouter(cfg, roles), load_words(self.data / "episode_words.spk.json"), series,
-                                 hint, video=source, duration=media_duration(source))
+                                 hint, video=source, duration=media_duration(source), lang=self.language)
         out.write_text(json.dumps([c.model_dump() for c in candidates], ensure_ascii=False, indent=1),
                        encoding="utf-8")
-        self.log(f"   кандидатов: {len(candidates)}")
+        self.say(f"   кандидатов: {len(candidates)}", f"   candidates: {len(candidates)}")
         return candidates
 
     def process(self, source: Path, cfg: Config, roles: dict[str, str], series: str, hint: str = "",
@@ -212,7 +227,7 @@ def add_music(scene: Scene, music: str | Path | None, volume: float | None = Non
 
 
 def render_scene(scene: Scene, out: Path, preset: str = "final", length: str = "full",
-                 log: Log = print, progress: Progress | None = None) -> Path:
+                 log: Log = print, progress: Progress | None = None, ui_lang: str = "ru") -> Path:
     """Шаг 5: рендер через Remotion. length — full или пресет из condense.PRESETS."""
     from chessify.condense import PRESETS, condense, estimated_seconds
 
@@ -220,7 +235,9 @@ def render_scene(scene: Scene, out: Path, preset: str = "final", length: str = "
         if length not in PRESETS:
             raise ValueError(f"длина: full или {', '.join(PRESETS)}")
         scene = condense(scene, PRESETS[length])
-    log(f"5/5 рендер: {sum(m.show_card for m in scene.moves)} ходов, ≈ {estimated_seconds(scene):.0f} с")
+    cards = sum(m.show_card for m in scene.moves)
+    log(pick(f"5/5 рендер: {cards} ходов, ≈ {estimated_seconds(scene):.0f} с",
+             f"5/5 rendering: {cards} moves, ≈ {estimated_seconds(scene):.0f} s", ui_lang))
     npx = shutil.which("npx")
     if not npx:
         raise RuntimeError("npx не найден: установите Node.js")

@@ -1,0 +1,24 @@
+Show: {{ series }}.{% if hint %} Hint: {{ hint }}{% endif %}
+
+Below is the transcript of the scene. Every word is numbered: [number] word. Lines are grouped by the
+speaker from automatic diarization (labels like SPK_0; diarization can be wrong).
+
+{{ transcript }}
+
+Your task is to split the scene into moves:
+1. Identify the two sides: who is White (attacks/asks first) and who is Black. Give each a short on-screen
+   name (1–2 words, e.g. "DEA", "Mike") and list the speaker labels of that side.
+2. Split the dialogue into moves. A move is one meaningful line of a side (glue together short consecutive
+   phrases of the same side). The sides usually alternate, but not necessarily. Filler lines ("Yes.",
+   "What do you do?") don't have to be moves — then they simply play between moves.
+3. For each move give the side and the word range: the number of the first and last word (inclusive).
+   Moves must not overlap and go in order.
+4. Silence is a move too. Pauses in the transcript are marked with a line "[pause N s after word i]". If a
+   side doesn't answer a direct question or pressure and it matters for the game, make a separate silent
+   move for that side: pause_after = i (then set w0 and w1 equal to i). The attacking side can have a silent
+   move too: the agents wait in silence, pressing with a stare. Don't turn ordinary technical pauses into moves.
+5. Pace. The first move is the first complete line of the scene: the viewer needs a hook in the first
+   seconds. After that, about 10–15 seconds of dialogue between moves on average: a fast exchange of short
+   lines is one or two moves, not one move per phrase. A move only ends at the end of a phrase: don't split
+   one character's line into two moves.
+6. Write the video title in two lines (separated by \n): "<who> vs <whom>:\n<what the scene is> as a chess game".

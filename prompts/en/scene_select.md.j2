@@ -1,0 +1,18 @@
+Show: {{ series }}.{% if hint %} Hint: {{ hint }}{% endif %}
+
+Below is the transcript of {% if part_total > 1 %}part {{ part }} of {{ part_total }} of {% endif %}the episode. Each line:
+[number] start–end time, speaker (automatic diarization labels, can be wrong): text.
+
+{{ transcript }}
+
+Find up to {{ max_candidates }} scenes that would work best for a "scene as a chess game" video.
+A good scene:
+- is a duel between two sides: an interrogation, negotiation, argument, threats, bargaining, a test of nerve;
+- has "moves": pressure and defense, a question and an evasion, a bluff and its test;
+- has tension and a resolution — it's clear who won in the end;
+- lasts from {{ min_seconds }} to {{ max_seconds }} seconds, mostly two people (or two sides) talking;
+- has substantial lines, not small talk ("pass the salt").
+
+For each scene give the numbers of the first and last line (inclusive), a short title, why it fits
+(1–2 sentences), the sides (who is White — attacks, who is Black — defends) and a suitability score
+from 1 to 10. Scenes must not overlap. If none fit, return an empty list.

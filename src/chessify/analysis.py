@@ -18,6 +18,12 @@ from chessify.scoring import score_moves
 
 PROMPTS = Environment(loader=FileSystemLoader(ROOT / "prompts"), undefined=StrictUndefined, keep_trailing_newline=True)
 REFERENCE_SCENE = ROOT / "render" / "src" / "fixtures" / "reference.scene.json"
+EXAMPLES_EN = ROOT / "prompts" / "en" / "examples.json"  # те же ходы эталона в переводе
+
+
+def template(name: str, lang: str = "ru"):
+    """Промпт на языке ролика: русские — в prompts/, английские — в prompts/en/."""
+    return PROMPTS.get_template(name if lang == "ru" else f"en/{name}")
 
 
 class SegPlayer(BaseModel):
@@ -55,9 +61,11 @@ class GradeResult(BaseModel):
     line: str
 
 
-def _examples(exclude_reference: bool) -> list[dict]:
+def _examples(exclude_reference: bool, lang: str = "ru") -> list[dict]:
     if exclude_reference or not REFERENCE_SCENE.exists():
         return []
+    if lang == "en":
+        return json.loads(EXAMPLES_EN.read_text(encoding="utf-8"))
     ref = Scene.model_validate_json(REFERENCE_SCENE.read_text(encoding="utf-8"))
     names = {Side.white: ref.players.white.name, Side.black: ref.players.black.name}
     return [{**m.model_dump(), "side_name": names[m.side]} for m in ref.moves]
@@ -67,7 +75,7 @@ PAUSE_MIN = 1.5  # секунды тишины, которые показыва�
 PAUSE_MAX_MOVE = 5.0  # дольше молчание на экране не держим
 
 
-def format_transcript(words: list[Word]) -> str:
+def format_transcript(words: list[Word], lang: str = "ru") -> str:
     lines: list[str] = []
     cur_spk: str | None = None
     buf: list[str] = []
@@ -80,7 +88,7 @@ def format_transcript(words: list[Word]) -> str:
         buf.append(f"[{i}] {w.w}")
         if i + 1 < len(words) and (gap := words[i + 1].t0 - w.t1) >= PAUSE_MIN:
             lines.append(f"{cur_spk}: " + " ".join(buf))
-            lines.append(f"[пауза {gap:.1f} с после слова {i}]")
+            lines.append(f"[pause {gap:.1f} s after word {i}]" if lang == "en" else f"[пауза {gap:.1f} с после слова {i}]")
             buf = []
     if buf:
         lines.append(f"{cur_spk}: " + " ".join(buf))
@@ -94,10 +102,10 @@ def _pause_span(words: list[Word], i: int) -> tuple[float, float] | None:
     return t0, min(words[i + 1].t0 - 0.1, t0 + PAUSE_MAX_MOVE)
 
 
-def move_span(m: SegMove, words: list[Word]) -> tuple[float, float, str]:
+def move_span(m: SegMove, words: list[Word], lang: str = "ru") -> tuple[float, float, str]:
     if m.pause_after is not None:
         t0, t1 = _pause_span(words, m.pause_after)  # type: ignore[misc]  # проверено в _clean_moves
-        return t0, t1, f"(молчание {t1 - t0:.0f} с)"
+        return t0, t1, f"(silence {t1 - t0:.0f} s)" if lang == "en" else f"(молчание {t1 - t0:.0f} с)"
     return words[m.w0].t0, words[m.w1].t1, " ".join(w.w for w in words[m.w0 : m.w1 + 1])
 
 
@@ -159,27 +167,28 @@ def number_moves(sides: list[Side]) -> list[int]:
 
 def analyze(router: LLMRouter, words: list[Word], meta: Meta, hint: str = "", exclude_reference: bool = False,
             eval_start: float = 0.5) -> Scene:
-    system = PROMPTS.get_template("system.md.j2").render(examples=_examples(exclude_reference))
+    lang = meta.language
+    system = template("system.md.j2", lang).render(examples=_examples(exclude_reference, lang))
 
     seg = router.complete_json(
         "segment", system,
-        PROMPTS.get_template("segment.md.j2").render(series=meta.series, hint=hint, transcript=format_transcript(words)),
+        template("segment.md.j2", lang).render(series=meta.series, hint=hint, transcript=format_transcript(words, lang)),
         SegmentResult,
     )
     moves = snap_to_phrases(_clean_moves(seg, words), words)
     if not moves:
         raise RuntimeError("модель не выделила ни одного хода")
     names = {Side.white: seg.white.name, Side.black: seg.black.name}
-    spans = [move_span(m, words) for m in moves]
+    spans = [move_span(m, words, lang) for m in moves]
     listed = [{"index": i, "side_name": names[m.side], "w0": m.w0, "w1": m.w1, "nonverbal": m.nonverbal,
                "quote": spans[i][2]} for i, m in enumerate(moves)]
 
-    grade_prompt = PROMPTS.get_template("grade.md.j2").render(
+    grade_prompt = template("grade.md.j2", lang).render(
         series=meta.series, white=seg.white.name, black=seg.black.name, eval_start=eval_start, moves=listed)
     graded = router.complete_json("grade", system, grade_prompt, GradeResult)
 
     draft = json.dumps({"moves_context": listed, **graded.model_dump(mode="json")}, ensure_ascii=False, indent=1)
-    edited = router.complete_json("edit", system, PROMPTS.get_template("edit.md.j2").render(draft=draft), GradeResult)
+    edited = router.complete_json("edit", system, template("edit.md.j2", lang).render(draft=draft), GradeResult)
 
     by_index = {g.index: g for g in edited.moves}
     missing = [i for i in range(len(moves)) if i not in by_index]

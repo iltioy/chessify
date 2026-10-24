@@ -1,0 +1,11 @@
+Show: {{ series }}. White — {{ white }}, Black — {{ black }}.
+Evaluation before the first move: {{ "%+.1f"|format(eval_start) }}.
+
+Moves of the game in order:
+{% for m in moves -%}
+{{ m.index }}. {{ m.side_name }}: "{{ m.quote }}"{% if m.nonverbal %} [non-verbal moment]{% endif %}
+{% endfor %}
+
+For each move (by index) give: category, title, comment.
+Then the result of the game: verdict — a big headline (for example "NO MATE", "CHECKMATE", "DRAW",
+"WHITE WINS") and line — a one-line conclusion of up to 90 characters.

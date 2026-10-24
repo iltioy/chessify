@@ -17,6 +17,7 @@ from typing import Protocol, TypeVar
 from pydantic import BaseModel, ValidationError
 
 from chessify.config import Config, ModelCfg, ProviderCfg
+from chessify.i18n import pick
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -238,7 +239,7 @@ def check_provider(cfg: Config, provider: str, model: str | None = None) -> dict
     Возвращает {"ok", "lines", "models"} — для `chessify llm-check` и кнопки «Проверить» в вебе.
     """
     prov = cfg.providers[provider]
-    lines = [f"Провайдер {provider}: {prov.adapter}, {prov.base_url or '—'}"]
+    lines = [pick("Провайдер", "Provider") + f" {provider}: {prov.adapter}, {prov.base_url or '—'}"]
     models: list[str] = []
     if prov.adapter == "openai_compat":
         from openai import OpenAI
@@ -246,15 +247,17 @@ def check_provider(cfg: Config, provider: str, model: str | None = None) -> dict
         key = os.environ.get(prov.key_env or "", "") or "none"
         try:
             models = [m.id for m in OpenAI(api_key=key, base_url=prov.base_url, timeout=20).models.list()]
-            shown = ", ".join(models[:15]) + (f" … и ещё {len(models) - 15}" if len(models) > 15 else "")
-            lines.append("Модели на сервере: " + (shown or "—"))
+            more = len(models) - 15
+            shown = ", ".join(models[:15]) + (pick(f" … и ещё {more}", f" … and {more} more") if more > 0 else "")
+            lines.append(pick("Модели на сервере: ", "Models on the server: ") + (shown or "—"))
         except Exception as e:  # noqa: BLE001
-            lines.append(f"Список моделей недоступен: {e}")
+            lines.append(pick("Список моделей недоступен: ", "Model list unavailable: ") + str(e))
     name = model or next((n for n, m in cfg.models.items() if m.provider == provider), None)
     if not name:
-        lines.append(f"в config/providers.yaml нет моделей провайдера {provider}")
+        lines.append(pick(f"в config/providers.yaml нет моделей провайдера {provider}",
+                          f"config/providers.yaml has no models for provider {provider}"))
         return {"ok": False, "lines": lines, "models": models}
-    lines.append(f"Пробный запрос к модели {name} ({cfg.models[name].id})…")
+    lines.append(pick("Пробный запрос к модели", "Test request to model") + f" {name} ({cfg.models[name].id})…")
 
     class Probe(BaseModel):
         category: str
@@ -265,9 +268,13 @@ def check_provider(cfg: Config, provider: str, model: str | None = None) -> dict
         out = router.complete_json("grade", "Ты шахматный комментатор. Отвечай по-русски.",
                                    "Ход: «Верно.» в ответ на вопрос об отказе от адвоката. Дай category и title.", Probe)
     except Exception as e:  # noqa: BLE001
-        lines.append(f"Ошибка: {e.__class__.__name__}: {e}")
-        lines.append("Проверьте адрес (обычно заканчивается на /v1), ключ, имя модели и доступ к сети (VPN)." if provider == "custom"
-                     else "Проверьте ключ, имя модели и доступ к сети (VPN).")
+        lines.append(pick("Ошибка: ", "Error: ") + f"{e.__class__.__name__}: {e}")
+        lines.append(pick("Проверьте адрес (обычно заканчивается на /v1), ключ, имя модели и доступ к сети (VPN).",
+                          "Check the address (usually ends with /v1), the key, the model name and network access (VPN).")
+                     if provider == "custom" else
+                     pick("Проверьте ключ, имя модели и доступ к сети (VPN).",
+                          "Check the key, the model name and network access (VPN)."))
         return {"ok": False, "lines": lines, "models": models}
-    lines.append(f"OK: {out.model_dump()}; токены {router.total.input_tokens}/{router.total.output_tokens}")
+    lines.append(f"OK: {out.model_dump()}; " + pick("токены", "tokens")
+                 + f" {router.total.input_tokens}/{router.total.output_tokens}")
     return {"ok": True, "lines": lines, "models": models}

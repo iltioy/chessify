@@ -5,6 +5,7 @@
 """
 
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -67,6 +68,7 @@ class Meta(BaseModel):
     series: str
     title: str = Field(description="Заголовок ролика; перенос строки через \\n")
     kicker: str = Field(default="Разбор сцены", description="Надзаголовок перед названием сериала")
+    language: Literal["ru", "en"] = Field(default="ru", description="Язык ролика: речь, тексты модели и надписи")
     watermark: str | None = None
     clip: str = Field(description="Видео сцены относительно папки ассетов")
     background: str | None = Field(default=None, description="Заранее размытый фон; если нет — размывается в шаблоне")

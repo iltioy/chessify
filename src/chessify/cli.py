@@ -62,6 +62,7 @@ def analyze(
     set_: list[str] = typer.Option([], "--set", help="Подмена роли: grade=claude"),
     hint: str = typer.Option("", help="Подсказка модели о сцене"),
     no_examples: bool = typer.Option(False, help="Не давать модели примеры из референса (для честной оценки на нём)"),
+    language: str = typer.Option("ru", help="Язык ролика: ru или en (речь, тексты модели, надписи)"),
 ) -> None:
     """Разобрать диалог как шахматную партию: ходы, оценки, комментарии."""
     from chessify.analysis import analyze as run_analysis
@@ -77,7 +78,12 @@ def analyze(
     raw = json.loads(words.read_text(encoding="utf-8"))
     word_list = load_words(words) if isinstance(raw, list) else Scene.model_validate(raw).words
     router = LLMRouter(cfg, roles)
-    meta = Meta(series=series, title="", clip=clip, background=background)
+    from chessify.pipeline import KICKER
+
+    from chessify.i18n import norm
+
+    lang = norm(language)
+    meta = Meta(series=series, title="", clip=clip, background=background, language=lang, kicker=KICKER[lang])
     scene = run_analysis(router, word_list, meta, hint=hint, exclude_reference=no_examples)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(scene.model_dump_json(indent=1) + "\n", encoding="utf-8")
@@ -158,6 +164,7 @@ def run(
     auto_scene: bool = typer.Option(False, help="На входе целая серия: найти лучшую сцену-дуэль и взять её"),
     music: str | None = typer.Option(None, help=MUSIC_HELP),
     music_volume: float | None = typer.Option(None, help="Громкость музыки под речью, 0–1 (по умолчанию 0.12)"),
+    language: str = typer.Option("ru", help="Язык ролика: ru или en (речь, тексты модели, надписи)"),
 ) -> None:
     """Всё сразу: видео → распознавание → спикеры → анализ → ролик. Готовые шаги пропускаются."""
     from chessify.config import load_config
@@ -168,15 +175,15 @@ def run(
         raise typer.BadParameter(f"нет ключей: {', '.join(missing)} (.env или «Настройки» веб-интерфейса)")
     _run_one(video, cfg, roles, job or video.stem, out, series=series, start=start, end=end, hint=hint,
              speakers=speakers, preset=preset, length=length, auto_scene=auto_scene, music=music,
-             music_volume=music_volume)
+             music_volume=music_volume, language=language)
 
 
 def _run_one(video: Path, cfg, roles: dict[str, str], job_id: str, out: Path | None, *, series: str,
              start: float | None, end: float | None, hint: str, speakers: int | None, preset: str, length: str,
-             auto_scene: bool, music: str | None, music_volume: float | None) -> Path:
+             auto_scene: bool, music: str | None, music_volume: float | None, language: str = "ru") -> Path:
     from chessify.pipeline import Job, add_music, render_scene
 
-    j = Job(job_id, log=typer.echo)
+    j = Job(job_id, log=typer.echo, language=language)
     if auto_scene and start is None and end is None:
         candidates = j.find_scenes(video, cfg, roles, series, hint)
         if not candidates:
@@ -203,6 +210,7 @@ def batch(
     auto_scene: bool = typer.Option(False, help="Файлы — целые серии: в каждой найти лучшую сцену-дуэль"),
     music: str | None = typer.Option(None, help=MUSIC_HELP),
     music_volume: float | None = typer.Option(None, help="Громкость музыки под речью, 0–1"),
+    language: str = typer.Option("ru", help="Язык ролика: ru или en (речь, тексты модели, надписи)"),
 ) -> None:
     """Пакет: обработать несколько файлов по очереди. Ошибка в одном файле не останавливает остальные."""
     from chessify.config import load_config
@@ -221,7 +229,7 @@ def batch(
         try:
             out = _run_one(f, cfg, roles, f.stem, None, series=series, start=None, end=None, hint=hint,
                            speakers=None, preset=preset, length=length, auto_scene=auto_scene, music=music,
-                           music_volume=music_volume)
+                           music_volume=music_volume, language=language)
             results.append((f, f"готово → {out}"))
         except Exception as e:  # noqa: BLE001 — пакет продолжается
             results.append((f, f"ОШИБКА: {e}"))
@@ -240,6 +248,7 @@ def find_scenes_cmd(
     job: str | None = typer.Option(None, help="Имя задачи; по умолчанию имя файла"),
     profile: str | None = typer.Option(None, help="Профиль из config/providers.yaml"),
     hint: str = typer.Option("", help="Подсказка модели: какую сцену искать"),
+    language: str = typer.Option("ru", help="Язык ролика: ru или en (речь, тексты модели, надписи)"),
 ) -> None:
     """Найти в серии сцены-дуэли для ролика (до трёх кандидатов)."""
     from chessify.config import load_config
@@ -247,7 +256,7 @@ def find_scenes_cmd(
 
     cfg = load_config()
     roles = cfg.profile(profile)
-    candidates = Job(job or video.stem, log=typer.echo).find_scenes(video, cfg, roles, series, hint)
+    candidates = Job(job or video.stem, log=typer.echo, language=language).find_scenes(video, cfg, roles, series, hint)
     for i, c in enumerate(candidates, 1):
         typer.echo(f"\n{i}. {c.title} — {c.score}/10, {c.start:.1f}–{c.end:.1f} с ({c.end - c.start:.0f} с)")
         typer.echo(f"   {c.why}\n   Стороны: {c.sides}\n   «{c.excerpt}»")
