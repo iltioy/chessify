@@ -1,0 +1,5 @@
+# Вариант без видеокарты NVIDIA: убирает запрос GPU, всё считается на процессоре (медленнее).
+# docker compose -f compose.yaml -f compose.cpu.yaml up -d --build
+services:
+  app:
+    deploy: !reset {}

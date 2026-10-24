@@ -1,0 +1,44 @@
+# Запуск:  docker compose up -d --build   → http://localhost:37415
+# Порт редкий, чтобы не спорить с другими программами; занят — впишите в .env строку CHESSIFY_PORT=<другой>.
+# Без видеокарты: docker compose -f compose.yaml -f compose.cpu.yaml up -d --build
+services:
+  app:
+    build: .
+    image: chessify:latest
+    container_name: chessify
+    ports:
+      - "${CHESSIFY_PORT:-37415}:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Профиль по умолчанию можно поменять в config/providers.yaml (папка смонтирована ниже).
+      - CHESSIFY_RENDER_HWACCEL=off
+    volumes:
+      - ./data/jobs:/app/jobs                 # данные задач: аудио, слова, сцены, журнал
+      - ./data/media:/app/render/public/jobs  # клипы, фоны и аватары задач
+      - ./data/out:/app/out                   # готовые ролики
+      - ./data/music:/app/render/public/music # библиотека фоновой музыки (можно класть файлы сюда)
+      - ./config:/app/config                  # провайдеры и профили — правятся без пересборки
+      # Код берётся с диска, а не из образа: после патча хватает «docker compose restart».
+      # Пересборка (--build) нужна, только если менялись зависимости или Dockerfile.
+      - ./src:/app/src
+      - ./prompts:/app/prompts
+      - ./render/src:/app/render/src
+      - ./render/public/sfx:/app/render/public/sfx
+      - ./data/settings:/app/settings         # ключи из «Настроек» веб-интерфейса
+      - cache:/cache                          # модели Whisper, pyannote, лиц (скачиваются один раз)
+      - claude:/root/.claude                  # вход в Claude Code для профилей quality/dev
+    shm_size: "2gb"                           # Chrome при рендере требует больше разделяемой памяти
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, compute, utility, video]
+
+volumes:
+  cache:
+  claude:

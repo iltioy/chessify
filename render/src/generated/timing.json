@@ -1,0 +1,12 @@
+{
+  "titleDelay": 0.25,
+  "typeDelay": 0.45,
+  "charsPerSecond": 35,
+  "holdAfterTyping": 1.0,
+  "minFreeze": 1.8,
+  "evalTween": 0.5,
+  "tailAfterLastMove": 0.8,
+  "summary": 7,
+  "cardDelay": 0.75,
+  "cardGap": 0.05
+}

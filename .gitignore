@@ -1,0 +1,31 @@
+video_chess.mp4
+/*.mp4
+*:Zone.Identifier
+node_modules/
+.venv/
+jobs/
+out/
+.env
+.env.*
+!.env.example
+/data/
+settings/
+render/out/
+render/public/fixture/
+render/public/jobs/
+fixtures/**/*.wav
+fixtures/**/*.mp4
+__pycache__/
+*.pyc
+render/public/music/
+.pytest_cache/
+
+# Внутреннее: заметки разработки и настройки Claude Code — не для публичного репозитория.
+PLAN.md
+CLAUDE.md
+.claude/
+.mcp.json
+skills-lock.json
+
+# Патчи для обновления развёрнутой копии.
+patches/

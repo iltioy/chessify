@@ -1,0 +1,361 @@
+{
+  "$defs": {
+    "Category": {
+      "enum": [
+        "brilliant",
+        "best",
+        "excellent",
+        "good",
+        "inaccuracy",
+        "mistake",
+        "blunder"
+      ],
+      "title": "Category",
+      "type": "string"
+    },
+    "Meta": {
+      "properties": {
+        "series": {
+          "title": "Series",
+          "type": "string"
+        },
+        "title": {
+          "description": "Заголовок ролика; перенос строки через \\n",
+          "title": "Title",
+          "type": "string"
+        },
+        "kicker": {
+          "default": "Разбор сцены",
+          "description": "Надзаголовок перед названием сериала",
+          "title": "Kicker",
+          "type": "string"
+        },
+        "watermark": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Watermark"
+        },
+        "clip": {
+          "description": "Видео сцены относительно папки ассетов",
+          "title": "Clip",
+          "type": "string"
+        },
+        "background": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Заранее размытый фон; если нет — размывается в шаблоне",
+          "title": "Background"
+        },
+        "eval_start": {
+          "default": 0.0,
+          "description": "Оценка до первого хода",
+          "title": "Eval Start",
+          "type": "number"
+        },
+        "music": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Фоновая музыка относительно папки ассетов",
+          "title": "Music"
+        },
+        "music_volume": {
+          "default": 0.12,
+          "description": "Громкость музыки под речью; на карточках — вдвое громче",
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Music Volume",
+          "type": "number"
+        },
+        "excerpts": {
+          "anyOf": [
+            {
+              "items": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Короткая версия: проигрывать только эти отрезки исходника [начало, конец]",
+          "title": "Excerpts"
+        }
+      },
+      "required": [
+        "series",
+        "title",
+        "clip"
+      ],
+      "title": "Meta",
+      "type": "object"
+    },
+    "Move": {
+      "properties": {
+        "n": {
+          "description": "Номер хода; белые и чёрные делят номер, как в шахматной нотации",
+          "minimum": 1,
+          "title": "N",
+          "type": "integer"
+        },
+        "side": {
+          "$ref": "#/$defs/Side"
+        },
+        "t0": {
+          "description": "Начало реплики, секунды исходного клипа",
+          "title": "T0",
+          "type": "number"
+        },
+        "t1": {
+          "description": "Конец реплики; после него кадр замирает и показывается карточка",
+          "title": "T1",
+          "type": "number"
+        },
+        "quote": {
+          "title": "Quote",
+          "type": "string"
+        },
+        "category": {
+          "$ref": "#/$defs/Category"
+        },
+        "title": {
+          "description": "Название хода, 1–4 слова",
+          "maxLength": 40,
+          "title": "Title",
+          "type": "string"
+        },
+        "comment": {
+          "description": "1–2 предложения анализа",
+          "maxLength": 220,
+          "title": "Comment",
+          "type": "string"
+        },
+        "eval_after": {
+          "description": "Оценка позиции после хода; плюс — преимущество белых",
+          "title": "Eval After",
+          "type": "number"
+        },
+        "mate_in": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Мат через N ходов фаворита (0 — мат на доске); только в концовке партии",
+          "title": "Mate In"
+        },
+        "show_card": {
+          "default": true,
+          "title": "Show Card",
+          "type": "boolean"
+        },
+        "nonverbal": {
+          "default": false,
+          "title": "Nonverbal",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "n",
+        "side",
+        "t0",
+        "t1",
+        "quote",
+        "category",
+        "title",
+        "comment",
+        "eval_after"
+      ],
+      "title": "Move",
+      "type": "object"
+    },
+    "Player": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "speakers": {
+          "description": "Метки спикеров этой стороны",
+          "items": {
+            "type": "string"
+          },
+          "title": "Speakers",
+          "type": "array"
+        },
+        "avatar": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Путь к аватару относительно папки ассетов",
+          "title": "Avatar"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Player",
+      "type": "object"
+    },
+    "Players": {
+      "properties": {
+        "white": {
+          "$ref": "#/$defs/Player"
+        },
+        "black": {
+          "$ref": "#/$defs/Player"
+        }
+      },
+      "required": [
+        "white",
+        "black"
+      ],
+      "title": "Players",
+      "type": "object"
+    },
+    "Side": {
+      "enum": [
+        "white",
+        "black"
+      ],
+      "title": "Side",
+      "type": "string"
+    },
+    "Summary": {
+      "properties": {
+        "verdict": {
+          "description": "Крупная строка итога, например «МАТА НЕТ»",
+          "title": "Verdict",
+          "type": "string"
+        },
+        "line": {
+          "description": "Одна строка вывода под вердиктом",
+          "title": "Line",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "line"
+      ],
+      "title": "Summary",
+      "type": "object"
+    },
+    "Word": {
+      "properties": {
+        "t0": {
+          "description": "Начало слова, секунды исходного клипа",
+          "title": "T0",
+          "type": "number"
+        },
+        "t1": {
+          "description": "Конец слова, секунды исходного клипа",
+          "title": "T1",
+          "type": "number"
+        },
+        "w": {
+          "description": "Слово с пунктуацией, как в субтитрах",
+          "title": "W",
+          "type": "string"
+        },
+        "spk": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Метка спикера из распознавания",
+          "title": "Spk"
+        }
+      },
+      "required": [
+        "t0",
+        "t1",
+        "w"
+      ],
+      "title": "Word",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "meta": {
+      "$ref": "#/$defs/Meta"
+    },
+    "players": {
+      "$ref": "#/$defs/Players"
+    },
+    "words": {
+      "items": {
+        "$ref": "#/$defs/Word"
+      },
+      "title": "Words",
+      "type": "array"
+    },
+    "moves": {
+      "items": {
+        "$ref": "#/$defs/Move"
+      },
+      "title": "Moves",
+      "type": "array"
+    },
+    "summary": {
+      "$ref": "#/$defs/Summary"
+    }
+  },
+  "required": [
+    "meta",
+    "players",
+    "words",
+    "moves",
+    "summary"
+  ],
+  "title": "Scene",
+  "type": "object"
+}

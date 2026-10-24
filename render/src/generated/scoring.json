@@ -1,0 +1,12 @@
+{
+  "weights": {
+    "brilliant": 100,
+    "best": 100,
+    "excellent": 93,
+    "good": 83,
+    "inaccuracy": 55,
+    "mistake": 30,
+    "blunder": 0
+  },
+  "evalLimit": 5.0
+}

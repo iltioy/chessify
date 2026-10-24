@@ -1,0 +1,52 @@
+# Провайдеры, модели и профили. Код конвейера запрашивает роль, а не модель.
+# Профиль = провайдер: какая модель разбирает партию. Ключи и имена моделей — в «Настройках»
+# веб-интерфейса (или в .env); здесь лишь имена переменных и значения по умолчанию.
+
+providers:
+  # Свой сервер: любой OpenAI-совместимый адрес (vLLM, SGLang, Ollama, LM Studio, прокси).
+  custom:     { adapter: openai_compat, base_url: "${CUSTOM_LLM_BASE_URL:-http://localhost:8001/v1}", key_env: CUSTOM_LLM_API_KEY }
+  deepseek:   { adapter: openai_compat, base_url: "https://api.deepseek.com", key_env: DEEPSEEK_API_KEY }
+  # Google Gemini: бесплатный тариф AI Studio, OpenAI-совместимый адрес.
+  gemini:     { adapter: openai_compat, base_url: "https://generativelanguage.googleapis.com/v1beta/openai/", key_env: GEMINI_API_KEY }
+  openai:     { adapter: openai_compat, base_url: "https://api.openai.com/v1", key_env: OPENAI_API_KEY }
+  openrouter: { adapter: openai_compat, base_url: "https://openrouter.ai/api/v1", key_env: OPENROUTER_API_KEY }
+  anthropic:  { adapter: anthropic, key_env: ANTHROPIC_API_KEY }
+  # Claude по подписке через Claude Code (вход: docker compose exec app claude → /login).
+  claude_sub: { adapter: claude_code }
+
+# caps: json_schema — строгий structured output; json_object — только «верни JSON»; vision — изображения.
+# price_per_mtok: вход, выход — $ за 1M токенов (для оценки стоимости в журнале задачи).
+models:
+  custom-llm:     { provider: custom, id: "${CUSTOM_LLM_MODEL:-qwen}", caps: [json_object] }
+  # DeepSeek: цены — дневные часы пик (01–04 и 06–10 UTC по будням); в остальное время вдвое дешевле.
+  deepseek-flash: { provider: deepseek, id: deepseek-flash, caps: [json_object, vision], price_per_mtok: [0.3, 1.2] }
+  deepseek-pro:   { provider: deepseek, id: deepseek-v4-pro, caps: [json_object], price_per_mtok: [1.32, 3.96] }
+  # Бесплатно на тарифе Free (запросы могут идти на обучение моделей Google); платно — $0.75/$3.75 до конца 2026.
+  gemini-flash:   { provider: gemini, id: "${GEMINI_MODEL:-gemini-3.8-flash}", caps: [json_object, vision], price_per_mtok: [0, 0] }
+  openai-main:    { provider: openai, id: "${OPENAI_MODEL:-gpt-6.1-sol}", caps: [json_schema, vision], price_per_mtok: [2, 10] }
+  # OpenRouter — сотни моделей разных компаний; цена зависит от выбранной.
+  openrouter-main: { provider: openrouter, id: "${OPENROUTER_MODEL:-deepseek/deepseek-v4-pro}", caps: [json_object] }
+  claude-api:     { provider: anthropic, id: "${ANTHROPIC_MODEL:-claude-opus-5-5}", caps: [json_schema, vision], price_per_mtok: [4, 20] }
+  claude:         { provider: claude_sub, id: opus, caps: [json_schema, vision] }
+
+asr:
+  local_whisper: { adapter: faster_whisper, model: large-v3, device: auto, compute_type: default }
+  cpu_whisper:   { adapter: faster_whisper, model: large-v3-turbo, device: cpu, compute_type: int8 }
+
+diarization:
+  local_pyannote: { adapter: pyannote, model: pyannote/speaker-diarization-community-1, device: auto, token_env: HF_TOKEN }
+
+profiles:
+  custom:     { asr: local_whisper, diarization: local_pyannote, scene_select: custom-llm, segment: custom-llm, grade: custom-llm, edit: custom-llm, nonverbal: custom-llm }
+  # DeepSeek: разметка на быстрой модели, оценки и комментарии — на Pro. Порядка 3–15 центов за ролик.
+  deepseek:   { asr: local_whisper, diarization: local_pyannote, scene_select: deepseek-flash, segment: deepseek-flash, grade: deepseek-pro, edit: deepseek-pro, nonverbal: deepseek-flash }
+  gemini:     { asr: local_whisper, diarization: local_pyannote, scene_select: gemini-flash, segment: gemini-flash, grade: gemini-flash, edit: gemini-flash, nonverbal: gemini-flash }
+  openai:     { asr: local_whisper, diarization: local_pyannote, scene_select: openai-main, segment: openai-main, grade: openai-main, edit: openai-main, nonverbal: openai-main }
+  openrouter: { asr: local_whisper, diarization: local_pyannote, scene_select: openrouter-main, segment: openrouter-main, grade: openrouter-main, edit: openrouter-main, nonverbal: openrouter-main }
+  anthropic:  { asr: local_whisper, diarization: local_pyannote, scene_select: claude-api, segment: claude-api, grade: claude-api, edit: claude-api, nonverbal: claude-api }
+  claude:     { asr: local_whisper, diarization: local_pyannote, scene_select: claude, segment: claude, grade: claude, edit: claude, nonverbal: claude }
+
+default_profile: custom
+
+# Старые имена профилей из прошлых версий: задачи и настройки с ними продолжают работать.
+profile_aliases: { work: custom, dev: claude, cheap: custom, quality: custom }
