@@ -4,8 +4,8 @@
 вписанное в интерфейсе — последнее явное решение пользователя. Конвейер по-прежнему читает os.environ,
 поэтому настройки действуют сразу, без перезапуска.
 
-Настройки разбиты на разделы: модели для разбора партии (раздел = профиль из config/providers.yaml)
-и распознавание речи.
+Настройки разбиты на разделы: модели для разбора партии (раздел = профиль из config/providers.yaml),
+распознавание речи и публикация (TikTok — креды хранит модуль tiktok-publisher, см. chessify.tiktok).
 """
 
 import os
@@ -43,7 +43,7 @@ class Field:
 class Section:
     id: str  # для моделей — имя профиля
     title: Text
-    kind: Literal["llm", "speech"]
+    kind: Literal["llm", "speech", "publish"]
     about: Text
     link: str = ""
     check: str | None = None  # что проверять кнопкой: провайдер из providers.yaml или "hf"
@@ -109,6 +109,14 @@ SECTIONS = [
              "of the dialogue are guessed from the meaning of the lines only."),
             "https://huggingface.co/settings/tokens", check="hf",
             fields=(Field("HF_TOKEN", ("Токен Hugging Face", "Hugging Face token")),)),
+    Section("tiktok", ("TikTok", "TikTok"), "publish",
+            ("Готовые ролики публикуются в ваш TikTok через официальный API: нужно своё приложение на TikTok for "
+             "Developers (Client key и Client secret), а аккаунт подключается входом на сайте TikTok — пароль "
+             "приложение не видит и не хранит.",
+             "Finished videos are posted to your TikTok through the official API: you need your own app on TikTok "
+             "for Developers (Client key and Client secret), and the account is connected by signing in on TikTok's "
+             "site — the app never sees or stores your password."),
+            "https://developers.tiktok.com/apps/"),
 ]
 FIELDS = [f for s in SECTIONS for f in s.fields]
 KEYS = {f.key: f for f in FIELDS} | {DEFAULT_PROFILE_KEY: Field(DEFAULT_PROFILE_KEY, ("Основная модель", "Main model"), "text")}

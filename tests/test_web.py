@@ -199,7 +199,7 @@ def test_settings_roundtrip(client, settings_file: Path, monkeypatch: pytest.Mon
     monkeypatch.setenv("HF_TOKEN", "hf_from_dotenv_value")
     got = c.get("/api/settings").json()
     assert [s["id"] for s in got["sections"]] == ["custom", "deepseek", "gemini", "openai", "openrouter", "anthropic",
-                                                  "claude", "hf"]
+                                                  "claude", "hf", "tiktok"]
     fields = _fields(got)
     assert fields["HF_TOKEN"]["source"] == "env" and "value" not in fields["HF_TOKEN"]
     assert next(s for s in got["sections"] if s["id"] == "hf")["ready"] is True

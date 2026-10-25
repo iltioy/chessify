@@ -208,3 +208,29 @@ dialog.settings::backdrop { background: rgba(0, 0, 0, 0.6); }
 .lang-switch { display: flex; background: var(--panel-2); border-radius: 9px; padding: 3px; gap: 2px; }
 .lang-switch button { background: none; color: var(--muted); padding: 5px 9px; border-radius: 7px; font-size: 13px; }
 .lang-switch button.active { background: var(--panel); color: var(--text); }
+
+.tiktok { margin: 20px 0; padding-top: 18px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; }
+.tiktok h2 { margin: 0; }
+.tt-form { display: flex; flex-direction: column; gap: 10px; }
+.tt-form .actions .grow { margin-right: auto; align-self: center; }
+.tt-result { background: var(--panel-2); border-radius: 10px; padding: 11px 13px; display: flex; flex-direction: column;
+  gap: 4px; font-size: 14px; }
+.tt-result .ok { color: var(--accent); }
+.tt-result .fail { color: #ff8a7a; white-space: pre-wrap; }
+.tt-result a { color: var(--accent); word-break: break-all; }
+.tt-result .link-like { background: none; padding: 0; width: fit-content; font-weight: 600; }
+.warn-text { color: var(--yellow); font-size: 13px; }
+.tt-pane { display: flex; flex-direction: column; gap: 14px; }
+.tt-steps { margin: 0; padding-left: 20px; color: var(--muted); display: flex; flex-direction: column; gap: 3px; }
+.tt-steps code { color: var(--text); background: var(--panel-2); padding: 1px 6px; border-radius: 5px; word-break: break-all; }
+.tt-app, .tt-connect, .tt-flow { display: flex; flex-direction: column; gap: 10px; }
+.tt-accounts { display: flex; flex-direction: column; gap: 8px; }
+.tt-accounts .nav-group { padding: 4px 0 0; }
+.tt-account { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; background: var(--panel-2);
+  border-radius: 10px; padding: 10px 12px; }
+.tt-account .grow { flex: 1 1 160px; align-self: center; }
+.tt-account .title { font-weight: 700; }
+.tt-account label { flex: 0 1 190px; }
+.tt-connect .row { align-items: flex-end; }
+.tt-flow { background: var(--panel-2); border-radius: 10px; padding: 12px; }
+.tt-flow p { margin: 0; }

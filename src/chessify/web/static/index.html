@@ -61,6 +61,13 @@
             <label><span data-i18n="volume">Громкость</span><input name="music_volume" type="range" min="0" max="0.4" step="0.01" value="0.12"></label>
           </div>
           <label class="link-like"><span data-i18n="music.add">+ добавить трек в библиотеку</span><input type="file" id="music-upload" accept="audio/*" hidden></label>
+          <div class="row tiktok-row" id="tiktok-row" hidden>
+            <label class="grow"><span data-i18n="tt.publish_to">Опубликовать в TikTok</span><select name="tiktok_account"></select></label>
+            <label><span data-i18n="tt.mode">Куда</span><select name="tiktok_mode">
+              <option value="direct" data-i18n="tt.mode.direct">В профиль</option>
+              <option value="inbox" data-i18n="tt.mode.inbox">В черновики</option>
+            </select></label>
+          </div>
           <div class="warn" id="profile-warn" hidden></div>
           <label class="check"><input type="checkbox" name="review" checked> <span data-i18n="review">Проверить ходы перед рендером</span></label>
           <button type="submit" class="primary" data-i18n="start.button">Запустить</button>
@@ -135,6 +142,28 @@
     <div class="videos" data-f="videos" hidden>
       <video controls playsinline data-f="player"></video>
       <div class="outputs" data-f="outputs"></div>
+    </div>
+
+    <div class="tiktok" data-f="tiktok" hidden>
+      <h2>TikTok</h2>
+      <div class="tt-result" data-f="tt-result" hidden></div>
+      <div class="tt-form" data-f="tt-form">
+        <div class="row">
+          <label class="grow"><span data-i18n="tt.account">Аккаунт</span><select data-f="tt-account"></select></label>
+          <label><span data-i18n="tt.privacy">Кто видит</span><select data-f="tt-privacy"></select></label>
+          <label><span data-i18n="tt.mode">Куда</span><select data-f="tt-mode">
+            <option value="direct" data-i18n="tt.mode.direct">В профиль</option>
+            <option value="inbox" data-i18n="tt.mode.inbox">В черновики</option>
+          </select></label>
+        </div>
+        <label><span data-i18n="tt.caption">Подпись</span><textarea data-f="tt-caption" rows="3" maxlength="2200"></textarea></label>
+        <div class="actions">
+          <span class="muted small grow" data-f="tt-video"></span>
+          <button class="primary" data-a="tt-publish" data-i18n="tt.publish">Опубликовать в TikTok</button>
+        </div>
+      </div>
+      <p class="muted small" data-f="tt-empty" hidden><span data-i18n="tt.no_accounts">Аккаунт TikTok не подключён.</span>
+        <button type="button" class="link-like" data-a="tt-settings" data-i18n="open_settings">Открыть настройки</button></p>
     </div>
 
     <div class="editor" data-f="editor" hidden>

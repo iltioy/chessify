@@ -30,6 +30,9 @@ let dirty = false;
 let pollTimer = null;
 let music = []; // библиотека треков
 let candidatesLoadedFor = null;
+let currentJob = null; // последний ответ /api/jobs/<id>
+let tt = null; // TikTok: приложение и подключённые аккаунты (/api/tiktok)
+let ttFilledFor = null; // форма публикации заполнена для этой задачи — не затирать правки подписи
 
 const fmtTime = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
 async function api(path, options = {}) {
@@ -69,6 +72,7 @@ function setupForm() {
   // Язык ролика (речь, тексты модели, надписи) по умолчанию — как язык интерфейса.
   fillSelect(form.language, { ru: t("lang.ru"), en: t("lang.en") }, LANG);
   form.profile.addEventListener("change", showProfileWarning);
+  form.tiktok_account.addEventListener("change", showTikTokMode);
   form.querySelectorAll('input[name="mode"]').forEach((r) => r.addEventListener("change", () => {
     $("#mode-hint").textContent = t(`mode.hint.${form.mode.value}`);
   }));
@@ -138,7 +142,7 @@ async function submitJob(ev) {
     for (const [i, file] of files.entries()) {
       const data = new FormData();
       data.append("video", file);
-      for (const name of ["series", "hint", "start", "end", "speakers", "profile", "length", "preset", "music", "music_volume", "mode", "language"]) {
+      for (const name of ["series", "hint", "start", "end", "speakers", "profile", "length", "preset", "music", "music_volume", "mode", "language", "tiktok_account", "tiktok_mode"]) {
         if (form[name].value !== "") data.append(name, form[name].value);
       }
       data.append("review", form.review.checked ? "true" : "false");
@@ -211,6 +215,8 @@ async function openJob(id) {
   scene = null;
   dirty = false;
   candidatesLoadedFor = null;
+  currentJob = null;
+  ttFilledFor = null;
   const detail = $("#detail");
   detail.replaceChildren($("#detail-tpl").content.cloneNode(true));
   applyI18n(detail);
@@ -256,6 +262,10 @@ function bindDetail(root) {
     } catch (e) { alert(e.message); }
   });
   root.querySelectorAll("[data-s]").forEach((input) => input.addEventListener("input", () => { markDirty(); }));
+  root.querySelector('[data-a="tt-publish"]').addEventListener("click", publishTikTok);
+  root.querySelector('[data-a="tt-settings"]').addEventListener("click", () => openSettings("tiktok"));
+  f("tt-account").addEventListener("change", fillPrivacy);
+  f("tt-mode").addEventListener("change", () => { f("tt-privacy").disabled = f("tt-mode").value === "inbox"; });
 }
 
 const f = (name) => $(`#detail [data-f="${name}"]`);
@@ -276,10 +286,11 @@ async function poll() {
     if (prev !== null) refreshJobs();
   }
   if (job.has_scene && !scene && !ACTIVE.has(job.status)) await loadScene();
-  if (ACTIVE.has(job.status)) pollTimer = setTimeout(poll, 1500);
+  if (ACTIVE.has(job.status) || job.tiktok?.state === "publishing") pollTimer = setTimeout(poll, 1500);
 }
 
 function renderJob(job) {
+  currentJob = job;
   f("created").textContent = job.created.replace("T", " ");
   f("series").textContent = job.params.series;
   f("source").textContent = job.params.hint || "";
@@ -309,6 +320,8 @@ function renderJob(job) {
         el("a", { href: `/api/jobs/${job.id}/video/${encodeURIComponent(name)}`, download: name, textContent: name })));
   }
 
+  renderTikTok(job);
+
   f("choose").hidden = job.status !== "choose";
   if (job.status === "choose" && candidatesLoadedFor !== job.id) loadCandidates(job);
 
@@ -321,6 +334,100 @@ function renderJob(job) {
     fillSelect(f("music"), { "": t("music.none"), ...Object.fromEntries(music.map((m) => [m, m])) }, job.params.music || "");
     f("music-volume").value = job.params.music_volume;
   }
+}
+
+// ---------- публикация в TikTok ----------
+// Креды и токены хранит модуль tiktok-publisher на сервере; здесь — только имена аккаунтов и параметры поста.
+
+const ttName = (a) => (a.username ? `${a.name} · @${a.username}` : a.name);
+
+async function loadTikTok() {
+  try { tt = await api("/api/tiktok"); } catch { tt = null; }
+  const form = $("#new-job");
+  const accounts = tt?.accounts || [];
+  $("#tiktok-row").hidden = accounts.length === 0;
+  fillSelect(form.tiktok_account, { "": t("tt.dont"), ...Object.fromEntries(accounts.map((a) => [a.name, ttName(a)])) },
+    form.tiktok_account.value);
+  showTikTokMode();
+  if (currentJob) renderTikTok(currentJob);
+}
+
+function showTikTokMode() {
+  const form = $("#new-job");
+  form.tiktok_mode.closest("label").hidden = !form.tiktok_account.value;
+}
+
+function fillPrivacy() {
+  const acc = (tt?.accounts || []).find((a) => a.name === f("tt-account").value);
+  const levels = Object.fromEntries((tt?.privacy_levels || []).map((p) => [p, t(`tt.privacy.${p}`)]));
+  const def = acc ? t("tt.privacy.default", { p: t(`tt.privacy.${acc.default_privacy}`) }) : "";
+  fillSelect(f("tt-privacy"), { "": def, ...levels }, "");
+}
+
+function renderTikTok(job) {
+  const box = f("tiktok");
+  box.hidden = job.outputs.length === 0 || !tt;
+  if (box.hidden) return;
+  const accounts = tt.accounts;
+  const info = job.tiktok;
+  f("tt-empty").hidden = accounts.length > 0;
+  f("tt-form").hidden = accounts.length === 0;
+  f("tt-video").textContent = t("tt.video", { name: job.outputs[job.outputs.length - 1] });
+  if (accounts.length && ttFilledFor !== job.id) {
+    ttFilledFor = job.id;
+    const preferred = info?.account || job.params.tiktok?.account;
+    fillSelect(f("tt-account"), Object.fromEntries(accounts.map((a) => [a.name, ttName(a)])),
+      accounts.some((a) => a.name === preferred) ? preferred : accounts[0].name);
+    fillPrivacy();
+    f("tt-mode").value = info?.mode || job.params.tiktok?.mode || "direct";
+    f("tt-privacy").disabled = f("tt-mode").value === "inbox";
+    f("tt-caption").value = info?.caption || job.params.tiktok?.caption || job.tiktok_caption || "";
+  }
+  $('#detail [data-a="tt-publish"]').disabled = info?.state === "publishing";
+  const res = f("tt-result");
+  res.hidden = !info;
+  if (info) res.replaceChildren(...tiktokResult(info));
+}
+
+function tiktokResult(info) {
+  const lines = [];
+  const add = (text, cls = "") => lines.push(el("div", { className: cls, textContent: text }));
+  const who = info.account;
+  if (info.state === "publishing") add(t("tt.state.publishing", { who }));
+  else if (info.state === "error") add(t("tt.state.error", { e: info.error || "" }), "fail");
+  else if (info.status === "SEND_TO_USER_INBOX") add(t("tt.state.inbox", { who }), "ok");
+  else if (info.state === "processing") add(t("tt.state.processing"));
+  else add(t("tt.state.done", { who, p: info.privacy ? t(`tt.privacy.${info.privacy}`) : "" }), "ok");
+  if (info.note) add(t("tt.note.unaudited"), "warn-text");
+  if (info.url) {
+    lines.push(el("a", { href: info.url, target: "_blank", rel: "noopener", textContent: info.url }));
+  } else if (info.publish_id && info.state !== "error" && info.status !== "SEND_TO_USER_INBOX"
+    && info.privacy !== "SELF_ONLY") {
+    add(t("tt.no_link"), "muted small");
+  }
+  if (info.publish_id && info.state !== "publishing") {
+    const refresh = el("button", { type: "button", className: "link-like", textContent: t("tt.refresh") });
+    refresh.addEventListener("click", async () => {
+      try { renderJob(await api(`/api/jobs/${currentId}/tiktok/refresh`, { method: "POST" })); } catch (e) { alert(e.message); }
+    });
+    lines.push(refresh);
+  }
+  return lines;
+}
+
+async function publishTikTok() {
+  const info = currentJob?.tiktok;
+  if (info && info.state !== "error" && !confirm(t("tt.confirm_again"))) return;
+  try {
+    await api(`/api/jobs/${currentId}/tiktok`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        account: f("tt-account").value, caption: f("tt-caption").value,
+        privacy: f("tt-privacy").value || null, mode: f("tt-mode").value,
+      }),
+    });
+    poll();
+  } catch (e) { alert(e.message); }
 }
 
 // ---------- выбор сцены ----------
@@ -483,7 +590,7 @@ let pendingDefault = null; // «Сделать основной» до сохр�
 const cleared = new Set(); // ключи, которые удалятся при сохранении
 
 const DEFAULT_KEY = "CHESSIFY_DEFAULT_PROFILE";
-const NAV_GROUPS = ["llm", "speech"];
+const NAV_GROUPS = ["llm", "speech", "publish"];
 
 function setupSettings() {
   const dialog = $("#settings");
@@ -497,7 +604,7 @@ function setupSettings() {
 
 async function openSettings(sectionId) {
   try {
-    settings = await api("/api/settings");
+    [settings, tt] = await Promise.all([api("/api/settings"), api("/api/tiktok")]);
   } catch (e) { alert(t("err.settings", { e: e.message })); return; }
   cleared.clear();
   pendingDefault = null;
@@ -517,7 +624,7 @@ function renderSettings() {
     nav.append(el("div", { className: "nav-group", textContent: t(`nav.${kind}`) }));
     for (const sec of settings.sections.filter((x) => x.kind === kind)) {
       const state = sec.ready === true ? "ready" : sec.ready === false ? "missing" : "unknown";
-      const item = el("button", { type: "button", className: `nav-item ${sec.id === activeSection ? "active" : ""}` },
+      const item = el("button", { type: "button", className: `nav-item ${sec.id === activeSection ? "active" : ""}`, dataset: { id: sec.id } },
         el("span", { className: `dot ${state}`, title: t(`dot.${state}`) }),
         el("span", { className: "nav-title", textContent: sec.title }),
         sec.id === currentDefault() ? el("span", { className: "tag web", textContent: t("main") }) : "");
@@ -540,8 +647,15 @@ function sectionPane(sec) {
   const pane = el("section", { className: "pane", dataset: { id: sec.id } },
     el("h3", { textContent: sec.title }),
     el("p", { className: "muted small", textContent: sec.about }));
-  if (sec.link) pane.append(el("a", { href: sec.link, target: "_blank", rel: "noopener", textContent: t("get_key") }));
+  if (sec.link) {
+    pane.append(el("a", { href: sec.link, target: "_blank", rel: "noopener",
+      textContent: t(sec.id === "tiktok" ? "tt.dev_link" : "get_key") }));
+  }
   pane.append(...sec.fields.map(settingField));
+  if (sec.id === "tiktok") {
+    pane.append(el("div", { className: "tt-pane", id: "tt-pane" }));
+    queueMicrotask(renderTikTokPane);
+  }
 
   const actions = el("div", { className: "pane-actions" });
   const out = el("pre", { className: "check-out", hidden: true });
@@ -622,6 +736,138 @@ async function runCheck(sec, button) {
   } finally { button.disabled = false; }
 }
 
+// ---------- настройки: TikTok ----------
+
+let ttConnectTimer = null;
+
+async function ttCall(path, method, body) {
+  const error = $("#settings-error");
+  try {
+    tt = await api(path, { method, headers: { "Content-Type": "application/json" }, body: body && JSON.stringify(body) });
+    error.hidden = true;
+    renderTikTokPane();
+    loadTikTok();
+    return true;
+  } catch (e) {
+    error.textContent = e.message;
+    error.hidden = false;
+    return false;
+  }
+}
+
+function renderTikTokPane() {
+  const box = $("#tt-pane");
+  if (!box || !tt) return;
+  const dot = $(`#settings-nav .nav-item[data-id="tiktok"] .dot`);
+  if (dot) dot.className = `dot ${tt.accounts.length ? "ready" : "missing"}`;
+
+  const steps = el("ol", { className: "tt-steps small" },
+    ...["tt.step1", "tt.step2", "tt.step3"].map((k) => el("li", { textContent: t(k) })),
+    el("li", {}, t("tt.step4"), " ", el("code", { textContent: `http://127.0.0.1:*${tt.callback_path}` })),
+    el("li", { textContent: t("tt.step5") }));
+
+  const key = el("input", { type: "text", value: tt.app?.client_key || "", autocomplete: "off", placeholder: "aw…" });
+  const secret = el("input", { type: "password", autocomplete: "new-password",
+    placeholder: tt.app ? t("secret.keep", { masked: tt.app.secret_masked }) : t("source.none") });
+  const saveApp = el("button", { type: "button", className: "ghost", textContent: t("tt.save_app") });
+  saveApp.addEventListener("click", async () => {
+    if (await ttCall("/api/tiktok/app", "PUT", { client_key: key.value, client_secret: secret.value })) {
+      $("#settings-saved").textContent = t("saved");
+    }
+  });
+  const app = el("div", { className: "tt-app" },
+    el("label", {}, el("span", { className: "field-head" }, "Client key"), key),
+    el("label", {}, el("span", { className: "field-head" }, "Client secret"), secret),
+    el("div", { className: "pane-actions" }, saveApp));
+
+  const accounts = el("div", { className: "tt-accounts" },
+    el("div", { className: "nav-group", textContent: t("tt.accounts") }),
+    ...(tt.accounts.length ? tt.accounts.map(ttAccountRow) : [el("p", { className: "muted small", textContent: t("tt.no_accounts") })]));
+
+  const names = new Set(tt.accounts.map((a) => a.name));
+  let suggested = "main";
+  for (let i = 2; names.has(suggested); i++) suggested = `main${i}`;
+  const name = el("input", { type: "text", value: suggested, autocomplete: "off", maxLength: 40 });
+  const connect = el("button", { type: "button", className: "primary", textContent: t("tt.connect"), disabled: !tt.app });
+  const flow = el("div", { className: "tt-flow", hidden: true });
+  connect.addEventListener("click", () => ttConnect(name.value.trim(), flow));
+  const connectBox = el("div", { className: "tt-connect" },
+    el("div", { className: "row" },
+      el("label", { className: "grow" }, el("span", { textContent: t("tt.account_name") }), name),
+      el("div", { className: "pane-actions" }, connect)),
+    tt.app ? "" : el("p", { className: "muted small", textContent: t("tt.need_app") }),
+    flow);
+
+  box.replaceChildren(steps, app, accounts, connectBox,
+    el("p", { className: "muted small", textContent: t("tt.audit") }));
+}
+
+function ttAccountRow(a) {
+  const privacy = el("select", {});
+  fillSelect(privacy, Object.fromEntries(tt.privacy_levels.map((p) => [p, t(`tt.privacy.${p}`)])), a.default_privacy);
+  privacy.addEventListener("change", () => ttCall(`/api/tiktok/accounts/${encodeURIComponent(a.name)}`, "PUT",
+    { default_privacy: privacy.value }));
+  const remove = el("button", { type: "button", className: "ghost danger", textContent: t("tt.disconnect") });
+  remove.addEventListener("click", () => {
+    if (confirm(t("tt.confirm_disconnect", { name: ttName(a) }))) ttCall(`/api/tiktok/accounts/${encodeURIComponent(a.name)}`, "DELETE");
+  });
+  return el("div", { className: "tt-account" },
+    el("div", { className: "grow" },
+      el("div", { className: "title", textContent: a.display_name || a.username || a.name }),
+      el("div", { className: "muted small", textContent: ttName(a) })),
+    el("label", {}, el("span", { textContent: t("tt.default_privacy") }), privacy),
+    remove);
+}
+
+async function ttConnect(name, flow) {
+  const tab = window.open("", "_blank"); // сразу, в ответ на нажатие — иначе браузер заблокирует вкладку
+  let res;
+  try {
+    res = await api("/api/tiktok/connect", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ account: name }),
+    });
+  } catch (e) {
+    tab?.close();
+    $("#settings-error").textContent = e.message;
+    $("#settings-error").hidden = false;
+    return;
+  }
+  if (tab) tab.location = res.url;
+  const paste = el("input", { type: "text", autocomplete: "off", placeholder: "http://127.0.0.1:…/api/tiktok/callback/?code=…" });
+  const done = el("button", { type: "button", className: "ghost", textContent: t("tt.finish") });
+  done.addEventListener("click", async () => {
+    if (paste.value.trim() && await ttCall("/api/tiktok/finish", "POST", { url: paste.value.trim() })) stopConnectWait();
+  });
+  flow.hidden = false;
+  flow.replaceChildren(
+    el("p", { className: "small", textContent: res.local ? t("tt.flow.local") : t("tt.flow.remote") }),
+    el("a", { href: res.url, target: "_blank", rel: "noopener", textContent: t("tt.open_login") }),
+    el("label", {}, el("span", { textContent: t("tt.paste") }), paste),
+    el("div", { className: "pane-actions" }, done));
+  // Вход завершается в другой вкладке — ждём, пока аккаунт появится в списке.
+  const before = new Set(tt.accounts.map((a) => `${a.name}:${a.connected_at}`));
+  const started = Date.now();
+  stopConnectWait();
+  ttConnectTimer = setInterval(async () => {
+    if (Date.now() - started > 5 * 60 * 1000 || !$("#settings").open) return stopConnectWait();
+    try {
+      const next = await api("/api/tiktok");
+      if (next.accounts.some((a) => !before.has(`${a.name}:${a.connected_at}`))) {
+        stopConnectWait();
+        tt = next;
+        renderTikTokPane();
+        loadTikTok();
+        $("#settings-saved").textContent = t("tt.connected");
+      }
+    } catch { /* следующая попытка */ }
+  }, 3000);
+}
+
+function stopConnectWait() {
+  clearInterval(ttConnectTimer);
+  ttConnectTimer = null;
+}
+
 // Отправляются только изменения: пустой ключ — «не менять», пустой текст вместо заданного здесь — удалить.
 async function saveSettings() {
   const form = $("#settings-form");
@@ -668,6 +914,6 @@ $("#music-upload").addEventListener("change", uploadMusic);
 setupDrop();
 setupForm();
 setupSettings();
-Promise.all([loadConfig(), loadMusic()]).catch((e) => alert(t("err.config", { e: e.message })));
+Promise.all([loadConfig(), loadMusic(), loadTikTok()]).catch((e) => alert(t("err.config", { e: e.message })));
 refreshJobs();
 setInterval(refreshJobs, 5000);

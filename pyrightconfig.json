@@ -1,0 +1,7 @@
+{
+  // Перекрывает [tool.pyright] из pyproject.toml (тот не правим: правка pyproject пересобирает слой зависимостей образа).
+  // modules/tiktok-publisher не входит в зависимости — chessify.tiktok импортирует его из папки.
+  "venvPath": ".",
+  "venv": ".venv",
+  "extraPaths": ["modules/tiktok-publisher/src"]
+}

@@ -23,6 +23,7 @@ render/public/music/
 # Внутреннее: заметки разработки и настройки Claude Code — не для публичного репозитория.
 PLAN.md
 CLAUDE.md
+AGENTS.md
 .claude/
 .mcp.json
 skills-lock.json

@@ -46,6 +46,7 @@ of any move.
 | 📦 **Several videos at once** | Drop several files and they are processed one by one |
 | 🧠 **Choice of AI model** | Free and paid AI models, or your own server, switched in the settings |
 | 🌍 **Two languages** | The interface and the videos themselves in English or Russian: speech, comments and on-screen text |
+| 📲 **Posting to TikTok** | A finished video goes straight to your TikTok account, or to its drafts |
 
 ## How it looks
 
@@ -145,6 +146,44 @@ Don't want to review anything? Uncheck **Check the moves before rendering**, and
 - **Pace the cards**: move cards appear at the start as a hook and then about once every 12 seconds,
   so viewers get to watch the scene rather than only the stops.
 - The **Show the card** checkbox on a move removes or restores the stop on that move.
+
+## Posting to TikTok
+
+Chessify can post finished videos to your TikTok account by itself. It uses TikTok's official API:
+the app never asks for your TikTok password, you sign in on TikTok's own site.
+
+**Once: create your own TikTok app.** TikTok gives posting access only to registered apps, so you need your own:
+
+1. Sign in at [developers.tiktok.com](https://developers.tiktok.com/) with your TikTok account, open
+   **Manage apps** and create an app. Platform: **Desktop**.
+2. Add the **Login Kit** and **Content Posting API** products; in Content Posting API turn on **Direct Post**.
+3. Scopes: `user.info.basic`, `video.publish`, `video.upload`.
+4. In Login Kit, add the redirect URI `http://127.0.0.1:*/api/tiktok/callback/` (exactly like this, with the `*`).
+5. Copy the **Client key** and **Client secret**.
+
+**In Chessify:** **⚙ Settings** → **TikTok**.
+
+1. Paste the Client key and Client secret and click **Save the app**.
+2. Click **Connect a TikTok account**: a TikTok tab opens, sign in and allow access.
+   - If you opened Chessify from another computer (not at `http://127.0.0.1:37415`), the page after sign-in
+     won't load. That's expected: copy its address from the browser's address bar, paste it into the field below
+     the button and click **Done**.
+3. Choose **Who can see by default**. You can connect several accounts under different names.
+
+**Posting:**
+
+- **Automatically:** in the **New video** form choose an account in **Post to TikTok**: the video is posted as soon
+  as it is built for the first time.
+- **By hand:** a finished job has a **TikTok** block: account, who can see, caption (filled in from the video title
+  and hashtags, you can change it) and the **Post to TikTok** button. The link to the post appears there too.
+- **To drafts:** pick **Where → To drafts**: the video lands in TikTok's Inbox and you post it from the app yourself.
+
+> [!IMPORTANT]
+> Until TikTok reviews your app (an audit, requested in the app's settings on developers.tiktok.com),
+> TikTok only allows **private** posts. Chessify then posts privately and says so. To publish openly before the
+> review, use drafts.
+
+The sign-in tokens are kept in `data\settings\tiktok.json`: don't share this file.
 
 ## FAQ
 

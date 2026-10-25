@@ -25,6 +25,15 @@ from chessify.schema import Scene
 OUT_DIR = ROOT / "out"
 Status = Literal["queued", "processing", "choose", "review", "rendering", "done", "error"]
 ACTIVE: set[str] = {"queued", "processing", "rendering"}
+TIKTOK_DONE = {"PUBLISH_COMPLETE", "SEND_TO_USER_INBOX", "FAILED"}
+
+
+class TikTokPost(BaseModel):
+    """Что и куда публиковать в TikTok. Креды аккаунта — в модуле tiktok-publisher, здесь только имя."""
+    account: str
+    caption: str = Field(default="", max_length=2200, description="Подпись; пусто — заголовок ролика и хэштеги")
+    privacy: str | None = Field(default=None, description="Приватность; пусто — как задано у аккаунта")
+    mode: Literal["direct", "inbox"] = Field(default="direct", description="direct — в профиль, inbox — в черновики")
 
 
 class JobParams(BaseModel):
@@ -42,6 +51,7 @@ class JobParams(BaseModel):
     music_volume: float = Field(default=0.12, ge=0, le=1)
     language: Lang = Field(default="ru", description="Язык ролика: речь, тексты модели и надписи")
     ui_lang: Lang = Field(default="ru", description="Язык интерфейса, на котором создана задача: журнал и сообщения")
+    tiktok: TikTokPost | None = Field(default=None, description="Опубликовать в TikTok после первого рендера")
 
 
 class JobState(BaseModel):
@@ -55,6 +65,8 @@ class JobState(BaseModel):
     log: list[str] = []
     error: str | None = None
     outputs: list[str] = []  # имена готовых роликов в out/
+    # Публикация в TikTok: state (publishing | processing | done | error), account, video, error и итог модуля.
+    tiktok: dict | None = None
 
 
 def _slug(name: str) -> str:
@@ -66,7 +78,7 @@ class JobStore:
     def __init__(self, root: Path = JOBS_DIR) -> None:
         self.root = root
         self.root.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()  # update — чтение и запись под одной блокировкой: пишут и рендер, и публикация
 
     def path(self, job_id: str) -> Path:
         if not re.fullmatch(r"[\w-]+", job_id):
@@ -96,14 +108,16 @@ class JobStore:
             tmp.replace(f)
 
     def update(self, job_id: str, **changes) -> JobState:
-        state = self.get(job_id).model_copy(update=changes)
-        self.save(state)
-        return state
+        with self._lock:
+            state = self.get(job_id).model_copy(update=changes)
+            self.save(state)
+            return state
 
     def append_log(self, job_id: str, line: str) -> None:
-        state = self.get(job_id)
-        state.log = (state.log + [f"{datetime.now():%H:%M:%S} {line}"])[-200:]
-        self.save(state)
+        with self._lock:
+            state = self.get(job_id)
+            state.log = (state.log + [f"{datetime.now():%H:%M:%S} {line}"])[-200:]
+            self.save(state)
 
     def all(self) -> list[JobState]:
         states = []
@@ -130,6 +144,10 @@ class JobStore:
         for s in self.all():
             if s.status in ACTIVE:
                 self.update(s.id, status="error", error="сервер был перезапущен во время обработки", progress=None)
+            if s.tiktok and s.tiktok.get("state") == "publishing":
+                self.update(s.id, tiktok={**s.tiktok, "state": "error", "error": pick(
+                    "сервер был перезапущен во время публикации", "the server was restarted while publishing",
+                    s.params.ui_lang)})
 
 
 Task = tuple[Literal["process", "render"], str]
@@ -224,7 +242,38 @@ class Worker:
         scene = add_music(self.store.load_scene(job_id), p.music, p.music_volume)
         render_scene(scene, OUT_DIR / name, p.preset, p.length, log=self._log(job_id), progress=progress, ui_lang=p.ui_lang)
         outputs = [o for o in self.store.get(job_id).outputs if o != name] + [name]
-        self.store.update(job_id, status="done", step=pick("готово", "done", p.ui_lang), progress=None, outputs=outputs)
+        state = self.store.update(job_id, status="done", step=pick("готово", "done", p.ui_lang), progress=None,
+                                  outputs=outputs)
+        if p.tiktok and state.tiktok is None:  # автопубликация — один раз; повторный рендер публикуют кнопкой
+            self.publish(job_id, p.tiktok, name)
+
+    def publish(self, job_id: str, post: TikTokPost, video: str) -> None:
+        """Публикация в TikTok — в своём потоке: это сеть, а не видеокарта, и очередь рендера ждать не должна."""
+        self.store.update(job_id, tiktok={"state": "publishing", "account": post.account, "video": video,
+                                          "mode": post.mode, "at": datetime.now().isoformat(timespec="seconds")})
+        threading.Thread(target=self._publish, args=(job_id, post, video), daemon=True,
+                         name=f"tiktok-{job_id}").start()
+
+    def _publish(self, job_id: str, post: TikTokPost, video: str) -> None:
+        from chessify import tiktok
+
+        ui = self.store.get(job_id).params.ui_lang
+        base = dict(self.store.get(job_id).tiktok or {})
+        try:
+            caption = post.caption.strip() or tiktok.default_caption(self.store.load_scene(job_id))
+            self.store.append_log(job_id, pick(f"TikTok: загружаю {video} в аккаунт «{post.account}»",
+                                               f"TikTok: uploading {video} to the account “{post.account}”", ui))
+            result = tiktok.publisher().publish(post.account, OUT_DIR / video, tiktok.PostOptions(
+                title=caption, privacy=post.privacy or None, mode=post.mode))
+            state = "error" if not result.ok else "done" if result.status in TIKTOK_DONE else "processing"
+            info = {**base, **result.to_dict(), "state": state, "caption": caption,
+                    "error": result.fail_reason if not result.ok else None}
+            self.store.append_log(job_id, f"TikTok: {result.status}" + (f" — {result.url}" if result.url else ""))
+        except Exception as e:  # noqa: BLE001 — ошибка публикации не ломает готовый ролик
+            info = {**base, "state": "error", "error": str(e) or e.__class__.__name__,
+                    "code": getattr(e, "code", None)}
+            self.store.append_log(job_id, pick(f"TikTok: ошибка — {info['error']}", f"TikTok: error — {info['error']}", ui))
+        self.store.update(job_id, tiktok=info)
 
 
 def wait_idle(worker: Worker, timeout: float = 30) -> None:

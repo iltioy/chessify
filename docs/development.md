@@ -53,15 +53,31 @@ docker compose exec app uv run chessify llm-check --provider <profile>
 - `compose.yaml` — with an NVIDIA graphics card, `compose.cpu.yaml` — without one:
   `docker compose -f compose.yaml -f compose.cpu.yaml up -d --build`.
 - The host port is `CHESSIFY_PORT` in `.env` (37415 by default); inside the container it is 8000.
-- The code (`src`, `prompts`, `render/src`, `render/public/sfx`) is mounted from disk: after a code change,
+- The code (`src`, `prompts`, `render/src`, `render/public/sfx`, `modules`) is mounted from disk: after a code change,
   `docker compose restart` is enough. A rebuild (`--build`) is needed when dependencies or the `Dockerfile` change.
 - Data lives in `data/`: `out` — videos, `jobs` — jobs, `media` — clips and avatars, `music` — music,
-  `settings` — keys from Settings. Speech recognition models are cached in the `cache` volume.
+  `settings` — keys from Settings and TikTok accounts (`tiktok.json`). Speech recognition models are cached in the `cache` volume.
 
 ```powershell
 docker compose logs -f                                   # server log
 docker compose exec app uv run chessify doctor           # check GPU, CUDA, ffmpeg, Remotion
 ```
+
+## Posting to TikTok
+
+- `modules/tiktok-publisher/` is a standalone, dependency-free module (official Content Posting API, OAuth with PKCE,
+  multi-account token store). It is meant to be reused in other projects: [README](../modules/tiktok-publisher/README.md),
+  [INTEGRATION.md](../modules/tiktok-publisher/INTEGRATION.md) for agents.
+- It is not a dependency in `pyproject.toml` (changing the lock file would rebuild the heavy Docker layer):
+  `src/chessify/tiktok.py` imports it from the folder. The same path is in `pyrightconfig.json`.
+- The store is `settings/tiktok.json` (Docker: `data/settings`), the TikTok app is saved under the name `chessify`.
+- API: `/api/tiktok` (app, accounts), `/api/tiktok/connect` → TikTok → `/api/tiktok/callback/`,
+  `/api/tiktok/finish` (address pasted by hand when the UI is opened from another machine),
+  `/api/jobs/<id>/tiktok` (publish), `/api/jobs/<id>/tiktok/refresh` (status and link).
+- `JobParams.tiktok` — publish after the first render; the result is in `JobState.tiktok`. Publishing runs in its own
+  thread and never fails the job.
+- Command line: `chessify run … --tiktok main [--tiktok-caption "…"] [--tiktok-inbox]`;
+  `chessify tiktok <command>` runs the module's CLI with the Chessify store (`account list`, `info main`, `publish …`).
 
 ## Without Docker
 

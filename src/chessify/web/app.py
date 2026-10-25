@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 
@@ -17,7 +17,7 @@ from chessify.config import load_config
 from chessify.paths import MUSIC_DIR, MUSIC_EXT
 from chessify.schema import Scene
 from chessify.scoring import WEIGHTS
-from chessify.web.jobs import OUT_DIR, JobParams, JobState, JobStore, Worker
+from chessify.web.jobs import OUT_DIR, JobParams, JobState, JobStore, TikTokPost, Worker
 
 STATIC = Path(__file__).parent / "static"
 LENGTHS = {"full": ("Вся сцена", "Whole scene"), "short3": ("До 3 минут", "Up to 3 minutes"),
@@ -79,6 +79,10 @@ def _ready(cfg, section_id: str) -> bool | None:
         return bool(os.environ.get("HF_TOKEN"))
     if section_id == "claude":
         return None
+    if section_id == "tiktok":
+        from chessify import tiktok
+
+        return bool(tiktok.status()["accounts"])
     missing = [k for k in cfg.missing_keys(cfg.profile(section_id)) if k != "HF_TOKEN"]
     return not missing and (section_id != "custom" or bool(os.environ.get("CUSTOM_LLM_BASE_URL")))
 
@@ -156,6 +160,8 @@ async def create_job(
     music: str | None = Form(None),
     music_volume: float = Form(0.12),
     language: str = Form(""),  # язык ролика; пусто — как язык интерфейса
+    tiktok_account: str = Form(""),  # опубликовать в этот аккаунт TikTok после рендера
+    tiktok_mode: str = Form("direct"),
 ) -> dict:
     if Path(video.filename or "").suffix.lower() not in VIDEO_EXT:
         raise HTTPException(400, pick("нужен видеофайл: ", "a video file is needed: ") + ", ".join(sorted(VIDEO_EXT)))
@@ -166,11 +172,13 @@ async def create_job(
     if mode not in ("clip", "episode"):
         raise HTTPException(400, pick("режим: clip или episode", "mode: clip or episode"))
     _check_music(music)
+    post = _tiktok_post(tiktok_account, mode=tiktok_mode) if tiktok_account else None
     params = JobParams(mode=mode, series=series.strip(), hint=hint.strip(), start=start, end=end, speakers=speakers,
                        profile=profile or None, length=length, preset=preset,
                        review=review.strip().lower() not in ("false", "0", "off", "no"),
                        music=music or None, music_volume=music_volume,
-                       language=i18n.norm(language or i18n.current.get()), ui_lang=i18n.norm(i18n.current.get()))
+                       language=i18n.norm(language or i18n.current.get()), ui_lang=i18n.norm(i18n.current.get()),
+                       tiktok=post)
     state = store.create(video.filename or "scene.mp4", params)
     with (store.path(state.id) / state.source).open("wb") as f:
         shutil.copyfileobj(video.file, f, length=8 * 1024 * 1024)
@@ -181,7 +189,16 @@ async def create_job(
 @app.get("/api/jobs/{job_id}")
 def get_job(job_id: str) -> dict:
     state = _job(job_id)
-    return {**state.model_dump(), "has_scene": store.scene_path(job_id).exists()}
+    has_scene = store.scene_path(job_id).exists()
+    caption = None
+    if has_scene and state.outputs:
+        from chessify import tiktok
+
+        try:
+            caption = tiktok.default_caption(store.load_scene(job_id))
+        except (ValidationError, OSError):
+            pass
+    return {**state.model_dump(), "has_scene": has_scene, "tiktok_caption": caption}
 
 
 @app.get("/api/jobs/{job_id}/candidates")
@@ -350,7 +367,7 @@ async def upload_music(file: UploadFile = File(...)) -> dict:
 @app.delete("/api/jobs/{job_id}")
 def delete(job_id: str) -> dict:
     state = _job(job_id)
-    if state.status in ("queued", "processing", "rendering"):
+    if state.status in ("queued", "processing", "rendering") or (state.tiktok or {}).get("state") == "publishing":
         raise HTTPException(409, pick("задача в работе", "the job is running"))
     from chessify.paths import RENDER_DIR
 
@@ -359,6 +376,184 @@ def delete(job_id: str) -> dict:
     shutil.rmtree(RENDER_DIR / "public" / "jobs" / job_id, ignore_errors=True)
     shutil.rmtree(store.path(job_id), ignore_errors=True)
     return {"ok": True}
+
+
+# ---------- TikTok: креды и токены — в модуле tiktok-publisher (settings/tiktok.json) ----------
+
+
+def _tiktok_post(account: str, caption: str = "", privacy: str | None = None, mode: str = "direct") -> TikTokPost:
+    from chessify import tiktok
+
+    names = {a["name"] for a in tiktok.status()["accounts"]}
+    if account not in names:
+        raise HTTPException(400, pick(f"аккаунт TikTok «{account}» не подключён", f"TikTok account “{account}” is not connected"))
+    if privacy and privacy not in tiktok.PRIVACY_LEVELS:
+        raise HTTPException(400, pick("неизвестная приватность", "unknown privacy level"))
+    if mode not in ("direct", "inbox"):
+        raise HTTPException(400, pick("режим: direct или inbox", "mode: direct or inbox"))
+    if len(caption) > 2200:
+        raise HTTPException(400, pick("подпись длиннее 2200 символов", "the caption is longer than 2200 characters"))
+    return TikTokPost(account=account, caption=caption, privacy=privacy or None, mode=mode)  # type: ignore[arg-type]
+
+
+@app.get("/api/tiktok")
+def tiktok_status() -> dict:
+    from chessify import tiktok
+
+    return tiktok.status()
+
+
+class TikTokAppUpdate(BaseModel):
+    client_key: str
+    client_secret: str = ""  # пусто — оставить прежний
+
+
+@app.put("/api/tiktok/app")
+def tiktok_app(req: TikTokAppUpdate) -> dict:
+    from chessify import tiktok
+
+    try:
+        tiktok.save_app(req.client_key, req.client_secret)
+    except tiktok.ConfigError:
+        raise HTTPException(400, pick("нужны Client key и Client secret", "Client key and Client secret are required")) from None
+    return tiktok.status()
+
+
+class TikTokConnect(BaseModel):
+    account: str = "main"
+
+
+@app.post("/api/tiktok/connect")
+def tiktok_connect(req: TikTokConnect, request: Request) -> dict:
+    """Ссылка на вход в TikTok. TikTok возвращает пользователя на 127.0.0.1 — то есть на машину с браузером."""
+    from chessify import tiktok
+
+    if not tiktok.ACCOUNT_NAME.fullmatch(req.account):
+        raise HTTPException(400, pick("имя аккаунта: буквы, цифры, - и _, до 40 символов",
+                                      "account name: letters, digits, - and _, up to 40 characters"))
+    port = request.url.port
+    redirect = f"http://127.0.0.1{f':{port}' if port else ''}{tiktok.CALLBACK_PATH}"
+    try:
+        url = tiktok.publisher().start_connect(req.account, tiktok.APP, redirect)
+    except tiktok.ConfigError:
+        raise HTTPException(400, pick("сначала сохраните Client key и Client secret",
+                                      "save the Client key and Client secret first")) from None
+    local = request.url.hostname in ("127.0.0.1", "localhost", "::1")
+    return {"url": url, "redirect_uri": redirect, "local": local}
+
+
+def _finish_connect(params: dict[str, str]) -> dict:
+    from chessify import tiktok
+
+    if "code" not in params:
+        reason = params.get("error_description") or params.get("error") or pick("нет кода в ответе", "no code in the response")
+        raise HTTPException(400, pick(f"TikTok не дал доступ: {reason}", f"TikTok denied access: {reason}"))
+    try:
+        account = tiktok.publisher().finish_connect(params.get("state", ""), params["code"])
+    except tiktok.TikTokError as e:
+        raise HTTPException(400, pick(f"не удалось подключить аккаунт: {e}", f"couldn't connect the account: {e}")) from None
+    return account.public()
+
+
+@app.get("/api/tiktok/callback/", response_class=HTMLResponse)
+def tiktok_callback(request: Request) -> HTMLResponse:
+    """Сюда TikTok возвращает пользователя после входа."""
+    lang = i18n.norm(request.headers.get("accept-language"))
+    try:
+        acc = _finish_connect(dict(request.query_params))
+        name = f"@{acc['username']}" if acc["username"] else acc["name"]
+        title, text, code = pick("Аккаунт подключён", "Account connected", lang), pick(
+            f"{name} подключён к Chessify. Эту вкладку можно закрыть.",
+            f"{name} is connected to Chessify. You can close this tab.", lang), 200
+    except HTTPException as e:
+        title, text, code = pick("Не получилось", "Something went wrong", lang), str(e.detail), 400
+    from html import escape
+
+    page = (f'<!doctype html><meta charset="utf-8"><title>{escape(title)}</title>'
+            '<body style="font-family:system-ui;background:#0d0f13;color:#f2f3f5;display:grid;place-items:center;'
+            f'min-height:90vh;text-align:center"><div><h1>{escape(title)}</h1><p>{escape(text)}</p>'
+            f'<p><a style="color:#81b64c" href="/">Chessify</a></p></div>')
+    return HTMLResponse(page, status_code=code)
+
+
+class TikTokFinish(BaseModel):
+    url: str  # адрес страницы, на которую вернул TikTok (если открыли интерфейс не на этой машине)
+
+
+@app.post("/api/tiktok/finish")
+def tiktok_finish(req: TikTokFinish) -> dict:
+    from chessify import tiktok
+
+    _finish_connect(tiktok.parse_callback(req.url))
+    return tiktok.status()
+
+
+class TikTokAccountUpdate(BaseModel):
+    default_privacy: str
+
+
+@app.put("/api/tiktok/accounts/{name}")
+def tiktok_account(name: str, req: TikTokAccountUpdate) -> dict:
+    from chessify import tiktok
+
+    try:
+        tiktok.publisher().store.set_default_privacy(name, req.default_privacy)
+    except tiktok.ConfigError as e:
+        raise HTTPException(400, str(e)) from None
+    return tiktok.status()
+
+
+@app.delete("/api/tiktok/accounts/{name}")
+def tiktok_disconnect(name: str) -> dict:
+    from chessify import tiktok
+
+    try:
+        tiktok.publisher().disconnect(name)
+    except tiktok.ConfigError:
+        raise HTTPException(404, pick("аккаунт не найден", "account not found")) from None
+    return tiktok.status()
+
+
+class TikTokPublish(BaseModel):
+    account: str
+    caption: str = ""
+    privacy: str | None = None
+    mode: str = "direct"
+    video: str | None = None  # имя ролика из outputs; по умолчанию последний
+
+
+@app.post("/api/jobs/{job_id}/tiktok")
+def publish_job(job_id: str, req: TikTokPublish) -> dict:
+    state = _job(job_id)
+    if not state.outputs:
+        raise HTTPException(409, pick("сначала соберите ролик", "build the video first"))
+    if (state.tiktok or {}).get("state") == "publishing":
+        raise HTTPException(409, pick("публикация уже идёт", "publishing is already in progress"))
+    video = req.video or state.outputs[-1]
+    if video not in state.outputs:
+        raise HTTPException(404, pick("ролик не найден", "video not found"))
+    worker.publish(job_id, _tiktok_post(req.account, req.caption, req.privacy, req.mode), video)
+    return store.get(job_id).model_dump()
+
+
+@app.post("/api/jobs/{job_id}/tiktok/refresh")
+def refresh_tiktok(job_id: str) -> dict:
+    """Статус поста у TikTok: обработка, модерация, ссылка на опубликованное видео."""
+    from chessify import tiktok
+    from chessify.web.jobs import TIKTOK_DONE
+
+    state = _job(job_id)
+    info = state.tiktok or {}
+    if not info.get("publish_id"):
+        raise HTTPException(409, pick("публикации ещё не было", "nothing has been published yet"))
+    try:
+        r = tiktok.publisher().status(info["account"], info["publish_id"], info.get("mode", "direct"),
+                                      info.get("privacy"), info.get("note"))
+    except tiktok.TikTokError as e:
+        raise HTTPException(502, str(e)) from None
+    st = "error" if not r.ok else "done" if r.status in TIKTOK_DONE else "processing"
+    store.update(job_id, tiktok={**info, **r.to_dict(), "state": st, "error": r.fail_reason if not r.ok else None})
+    return store.get(job_id).model_dump()
 
 
 # Длина ролика: пресеты из condense и «вся сцена» — проверка согласованности при импорте.

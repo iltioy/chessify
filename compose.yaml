@@ -26,7 +26,8 @@ services:
       - ./prompts:/app/prompts
       - ./render/src:/app/render/src
       - ./render/public/sfx:/app/render/public/sfx
-      - ./data/settings:/app/settings         # ключи из «Настроек» веб-интерфейса
+      - ./modules:/app/modules                # модули (публикация в TikTok)
+      - ./data/settings:/app/settings         # ключи из «Настроек» и аккаунты TikTok (tiktok.json)
       - cache:/cache                          # модели Whisper, pyannote, лиц (скачиваются один раз)
       - claude:/root/.claude                  # вход в Claude Code для профилей quality/dev
     shm_size: "2gb"                           # Chrome при рендере требует больше разделяемой памяти

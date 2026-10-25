@@ -165,6 +165,9 @@ def run(
     music: str | None = typer.Option(None, help=MUSIC_HELP),
     music_volume: float | None = typer.Option(None, help="Громкость музыки под речью, 0–1 (по умолчанию 0.12)"),
     language: str = typer.Option("ru", help="Язык ролика: ru или en (речь, тексты модели, надписи)"),
+    tiktok: str | None = typer.Option(None, help="Опубликовать ролик в этот аккаунт TikTok (chessify tiktok account list)"),
+    tiktok_caption: str = typer.Option("", help="Подпись в TikTok; пусто — заголовок ролика и хэштеги"),
+    tiktok_inbox: bool = typer.Option(False, help="Не публиковать сразу, а отправить в черновики TikTok"),
 ) -> None:
     """Всё сразу: видео → распознавание → спикеры → анализ → ролик. Готовые шаги пропускаются."""
     from chessify.config import load_config
@@ -173,9 +176,20 @@ def run(
     roles = cfg.profile(profile, dict(s.split("=", 1) for s in set_))
     if missing := [k for k in cfg.missing_keys(roles) if k != "HF_TOKEN"]:
         raise typer.BadParameter(f"нет ключей: {', '.join(missing)} (.env или «Настройки» веб-интерфейса)")
-    _run_one(video, cfg, roles, job or video.stem, out, series=series, start=start, end=end, hint=hint,
-             speakers=speakers, preset=preset, length=length, auto_scene=auto_scene, music=music,
-             music_volume=music_volume, language=language)
+    result = _run_one(video, cfg, roles, job or video.stem, out, series=series, start=start, end=end, hint=hint,
+                      speakers=speakers, preset=preset, length=length, auto_scene=auto_scene, music=music,
+                      music_volume=music_volume, language=language)
+    if tiktok:
+        from chessify import tiktok as tt
+        from chessify.pipeline import Job
+
+        scene = Scene.model_validate_json((Job(job or video.stem).data / "scene.json").read_text(encoding="utf-8"))
+        typer.echo(f"TikTok: загружаю в аккаунт «{tiktok}»…")
+        r = tt.publisher().publish(tiktok, result, tt.PostOptions(
+            title=tiktok_caption or tt.default_caption(scene), mode="inbox" if tiktok_inbox else "direct"))
+        typer.echo(f"TikTok: {r.status}" + (f" — {r.url}" if r.url else "") + (f" ({r.note})" if r.note else ""))
+        if not r.ok:
+            raise typer.Exit(1)
 
 
 def _run_one(video: Path, cfg, roles: dict[str, str], job_id: str, out: Path | None, *, series: str,
@@ -262,6 +276,18 @@ def find_scenes_cmd(
         typer.echo(f"   {c.why}\n   Стороны: {c.sides}\n   «{c.excerpt}»")
     if candidates:
         typer.echo(f"\nДальше: chessify run {video} --series \"{series}\" --start {candidates[0].start} --end {candidates[0].end}")
+
+
+@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True}, add_help_option=False)
+def tiktok(ctx: typer.Context) -> None:
+    """Аккаунты TikTok: команды модуля tiktok-publisher с хранилищем Chessify (settings/tiktok.json).
+
+    Например: chessify tiktok account list; chessify tiktok account connect main --app chessify.
+    """
+    from chessify import tiktok as tt
+    from tiktok_publisher.cli import main
+
+    raise typer.Exit(main(["--store", str(tt.STORE_PATH), *ctx.args]))
 
 
 @app.command()
